@@ -71,7 +71,6 @@ export default function AdminSystemScreen() {
           <SimpleBarChart
             data={OCR_BARS.map(b => ({ label: b.label, value: b.value }))}
             maxValue={2}
-            height={80}
           />
         </View>
 

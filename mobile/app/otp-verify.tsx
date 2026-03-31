@@ -85,7 +85,7 @@ export default function OtpVerifyScreen() {
 
       {/* OTP input */}
       <View style={styles.otpWrapper}>
-        <OTPInput value={code} length={6} />
+        <OTPInput value={code} onChange={setCode} length={6} />
       </View>
 
       {/* Resend row */}
