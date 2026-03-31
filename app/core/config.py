@@ -110,6 +110,19 @@ class Settings(BaseSettings):
             raise ValueError("ENVIRONMENT must be development | staging | production")
         return v
 
+    def model_post_init(self, __context) -> None:
+        """Cross-field production security checks."""
+        if self.ENVIRONMENT in ("staging", "production"):
+            if not self.MOMO_WEBHOOK_SECRET:
+                raise ValueError(
+                    "MOMO_WEBHOOK_SECRET must be set in staging/production "
+                    "to validate MoMo webhook signatures"
+                )
+            if not self.AFRICASTALKING_WEBHOOK_SECRET and self.USSD_PROVIDER == "africastalking":
+                raise ValueError(
+                    "AFRICASTALKING_WEBHOOK_SECRET must be set in staging/production"
+                )
+
     class Config:
         env_file = ".env"
         case_sensitive = True

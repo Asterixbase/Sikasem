@@ -6,7 +6,7 @@ Handles: USSD consent via Africa's Talking, auto-trigger cascade,
 import hashlib
 import hmac
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import httpx
 import logging
@@ -168,7 +168,7 @@ class GuarantorService:
 
         audit_log.append({
             "event": "TRIGGERED",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "detail": f"3 retries exhausted. Auto-charging guarantor {guarantor_name}",
             "ref": trigger_ref,
         })
@@ -184,7 +184,7 @@ class GuarantorService:
             )
             audit_log.append({
                 "event": "CHARGED",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "detail": f"MoMo requestToPay sent to guarantor",
                 "momo_ref": result.get("x_reference_id"),
             })
@@ -193,7 +193,7 @@ class GuarantorService:
             logger.error("Guarantor trigger failed: %s", str(e))
             audit_log.append({
                 "event": "TRIGGER_FAILED",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "detail": "MoMo charge attempt failed",   # don't log raw exception to audit
             })
             raise
@@ -205,7 +205,7 @@ class GuarantorService:
         """Append an immutable audit event. Returns updated log."""
         entry = {
             "event": event,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "detail": detail,
             **extra,
         }

@@ -1,5 +1,5 @@
 """
-AjoBox Database Models — complete schema.
+Sikasem Database Models — complete schema.
 All monetary values stored as INTEGER (minor units / subunits).
 GHS → pesewas (÷100), NGN → kobo (÷100), MRU → khoum (÷5), etc.
 """
@@ -124,7 +124,7 @@ class Circle(Base):
     next_due_date   = Column(DateTime(timezone=True), nullable=True)
     insurance_enabled  = Column(Boolean, default=False)
     guarantors_required= Column(Boolean, default=False)
-    momo_collection_ref= Column(String(80), nullable=True)   # AjoBox MoMo agent ref
+    momo_collection_ref= Column(String(80), nullable=True)   # Sikasem MoMo collection ref
     bog_registered  = Column(Boolean, default=False)         # Bank of Ghana registered
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())

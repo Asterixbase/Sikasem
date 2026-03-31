@@ -3,11 +3,13 @@ Sikasem API Routers — all endpoints.
 All protected routes require authenticated users.
 Organiser-only actions use require_circle_organiser.
 """
+import hashlib as _hashlib
 import hmac as _hmac
+import json as _json
 import re
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks, Body
@@ -296,6 +298,16 @@ async def collect_dues(
     if circle.status != CircleStatus.ACTIVE:
         raise HTTPException(400, "Circle must be ACTIVE to collect dues")
 
+    # Idempotency guard — block duplicate collections for the same cycle
+    existing_collection = (await db.execute(
+        select(CyclePayment).where(
+            CyclePayment.circle_id == circle_id,
+            CyclePayment.cycle_number == circle.current_cycle,
+        )
+    )).scalar_one_or_none()
+    if existing_collection:
+        raise HTTPException(409, "Collection already initiated for the current cycle")
+
     members_rows = (await db.execute(
         select(CircleMember, User)
         .join(User, CircleMember.user_id == User.id)
@@ -535,7 +547,7 @@ async def enrol_insurance(
         beneficiary_name=req.beneficiary_name,
         beneficiary_phone=req.beneficiary_phone,
         beneficiary_relation=req.beneficiary_relation,
-        start_date=datetime.utcnow(),
+        start_date=datetime.now(timezone.utc),
     )
     db.add(policy)
     await db.commit()
@@ -673,8 +685,9 @@ async def request_guarantor(
         raise HTTPException(403, "Not authorised to request a guarantor for this member")
 
     agreement_ref = guarantor_service.generate_agreement_ref()
-    expires_at    = datetime.utcnow() + __import__('datetime').timedelta(hours=36)
-    timestamp_str = datetime.utcnow().isoformat()
+    now_utc       = datetime.now(timezone.utc)
+    expires_at    = now_utc + timedelta(hours=36)
+    timestamp_str = now_utc.isoformat()
 
     sha256_hash = guarantor_service.generate_hmac_proof(
         agreement_ref, member.id, normalised,
@@ -709,7 +722,7 @@ async def request_guarantor(
         status=GuarantorStatus.PENDING,
         agreement_ref=agreement_ref,
         sha256_hash=sha256_hash,
-        ussd_sent_at=datetime.utcnow(),
+        ussd_sent_at=now_utc,
         expires_at=expires_at,
         audit_log=audit_log,
     )
@@ -753,7 +766,7 @@ async def accept_guarantor(
         raise HTTPException(403, "Not authorised to accept this agreement")
 
     agreement.status = GuarantorStatus.ACTIVE
-    agreement.accepted_at = datetime.utcnow()
+    agreement.accepted_at = datetime.now(timezone.utc)
     agreement.audit_log = guarantor_service.append_audit(
         agreement.audit_log or [], "ACCEPTED",
         "Guarantor accepted via API. SHA-256 signed."
@@ -858,6 +871,16 @@ async def add_member(
     if not user:
         raise HTTPException(404, "User with this phone not found. Ask them to register first.")
 
+    # Check payout_position is not already taken in this circle
+    pos_taken = (await db.execute(
+        select(CircleMember).where(
+            CircleMember.circle_id == req.circle_id,
+            CircleMember.payout_position == req.payout_position,
+        )
+    )).scalar_one_or_none()
+    if pos_taken:
+        raise HTTPException(409, f"Payout position {req.payout_position} is already assigned")
+
     membership = CircleMember(
         id=str(uuid.uuid4()),
         circle_id=req.circle_id,
@@ -886,73 +909,81 @@ async def momo_collection_webhook(
     """
     raw_body = await request.body()
 
-    # Validate signature in production
-    if settings.ENVIRONMENT == "production":
+    # Validate signature in all non-development environments
+    if settings.ENVIRONMENT != "development":
         sig = request.headers.get("X-Signature") or request.headers.get("Authorization", "")
         ts  = request.headers.get("X-Timestamp")
         if not momo_service.validate_webhook_signature(raw_body, sig, timestamp=ts):
             raise HTTPException(401, "Invalid webhook signature")
 
     try:
-        import json as _json
         payload = _json.loads(raw_body)
     except Exception:
         raise HTTPException(400, "Invalid JSON payload")
 
     ref_id   = payload.get("externalId") or payload.get("referenceId")
     status_  = payload.get("status")
-    momo_ref = payload.get("financialTransactionId")
+    fin_ref  = payload.get("financialTransactionId")  # MTN's own transaction ID
 
     if not ref_id:
         return {"received": True}
 
-    await db.execute(
-        update(CyclePayment)
-        .where(CyclePayment.momo_ref == ref_id)
-        .values(
-            status=PaymentStatus.PAID if status_ == "SUCCESSFUL" else PaymentStatus.FAILED,
-            momo_ref=momo_ref,
-            paid_at=datetime.utcnow() if status_ == "SUCCESSFUL" else None,
+    # SELECT first (by our externalId stored in momo_ref) before any UPDATE overwrites it
+    payment = (await db.execute(
+        select(CyclePayment).where(CyclePayment.momo_ref == ref_id)
+    )).scalar_one_or_none()
+
+    now_utc = datetime.now(timezone.utc)
+    if status_ == "SUCCESSFUL":
+        await db.execute(
+            update(CyclePayment)
+            .where(CyclePayment.momo_ref == ref_id)
+            .values(
+                status=PaymentStatus.PAID,
+                momo_ref=fin_ref or ref_id,
+                paid_at=now_utc,
+            )
         )
-    )
+    else:
+        # Keep original ref_id so the record stays findable; only update status
+        await db.execute(
+            update(CyclePayment)
+            .where(CyclePayment.momo_ref == ref_id)
+            .values(status=PaymentStatus.FAILED)
+        )
 
-    if status_ == "FAILED":
-        payment = (await db.execute(
-            select(CyclePayment).where(CyclePayment.momo_ref == ref_id)
-        )).scalar_one_or_none()
-
-        if payment:
-            payment.retry_count = (payment.retry_count or 0) + 1
-            if payment.retry_count >= 3:
-                agreement = (await db.execute(
-                    select(GuarantorAgreement).where(
-                        and_(
-                            GuarantorAgreement.member_id == payment.member_id,
-                            GuarantorAgreement.circle_id == payment.circle_id,
-                            GuarantorAgreement.status == GuarantorStatus.ACTIVE,
-                        )
+    if status_ == "FAILED" and payment:
+        payment.retry_count = (payment.retry_count or 0) + 1
+        if payment.retry_count >= 3:
+            agreement = (await db.execute(
+                select(GuarantorAgreement).where(
+                    and_(
+                        GuarantorAgreement.member_id == payment.member_id,
+                        GuarantorAgreement.circle_id == payment.circle_id,
+                        GuarantorAgreement.status == GuarantorStatus.ACTIVE,
                     )
-                )).scalar_one_or_none()
+                )
+            )).scalar_one_or_none()
 
-                if agreement:
-                    circle = (await db.execute(
-                        select(Circle).where(Circle.id == payment.circle_id)
-                    )).scalar_one_or_none()
-                    try:
-                        await guarantor_service.trigger_guarantor(
-                            agreement_ref=agreement.agreement_ref,
-                            guarantor_phone=agreement.guarantor_phone,
-                            guarantor_name=agreement.guarantor_name or "Guarantor",
-                            member_name="Member",
-                            circle_name=circle.name if circle else "Circle",
-                            amount_pesawas=payment.amount,
-                            currency=circle.currency if circle else "GHS",
-                            audit_log=agreement.audit_log or [],
-                        )
-                        agreement.status = GuarantorStatus.TRIGGERED
-                        agreement.triggered_at = datetime.utcnow()
-                    except Exception as e:
-                        logger.error("Guarantor trigger failed: %s", e)
+            if agreement:
+                circle = (await db.execute(
+                    select(Circle).where(Circle.id == payment.circle_id)
+                )).scalar_one_or_none()
+                try:
+                    await guarantor_service.trigger_guarantor(
+                        agreement_ref=agreement.agreement_ref,
+                        guarantor_phone=agreement.guarantor_phone,
+                        guarantor_name=agreement.guarantor_name or "Guarantor",
+                        member_name="Member",
+                        circle_name=circle.name if circle else "Circle",
+                        amount_pesawas=payment.amount,
+                        currency=circle.currency if circle else "GHS",
+                        audit_log=agreement.audit_log or [],
+                    )
+                    agreement.status = GuarantorStatus.TRIGGERED
+                    agreement.triggered_at = now_utc
+                except Exception as e:
+                    logger.error("Guarantor trigger failed: %s", e)
 
     await db.commit()
     logger.info("MoMo collection webhook: ref=%s status=%s", ref_id, status_)
@@ -967,27 +998,26 @@ async def momo_disbursement_webhook(
     """MTN MoMo webhook for disbursement (payout) status."""
     raw_body = await request.body()
 
-    if settings.ENVIRONMENT == "production":
+    if settings.ENVIRONMENT != "development":
         sig = request.headers.get("X-Signature") or request.headers.get("Authorization", "")
         ts  = request.headers.get("X-Timestamp")
         if not momo_service.validate_webhook_signature(raw_body, sig, timestamp=ts):
             raise HTTPException(401, "Invalid webhook signature")
 
     try:
-        import json as _json
         payload = _json.loads(raw_body)
     except Exception:
         raise HTTPException(400, "Invalid JSON payload")
 
-    ref_id   = payload.get("externalId")
-    status_  = payload.get("status")
-    momo_ref = payload.get("financialTransactionId")
+    ref_id  = payload.get("externalId")
+    status_ = payload.get("status")
+    fin_ref = payload.get("financialTransactionId")
 
     if ref_id and status_ == "SUCCESSFUL":
         await db.execute(
             update(CyclePayout)
             .where(CyclePayout.momo_ref == ref_id)
-            .values(momo_ref=momo_ref, disbursed_at=datetime.utcnow())
+            .values(momo_ref=fin_ref or ref_id, disbursed_at=datetime.now(timezone.utc))
         )
         await db.commit()
 
@@ -1003,13 +1033,13 @@ async def ussd_consent_callback(
     Africa's Talking USSD callback for guarantor consent.
     Validates HMAC signature in production. Exact phone match (no LIKE injection).
     """
-    # Validate Africa's Talking signature in production
-    if settings.ENVIRONMENT == "production" and settings.AFRICASTALKING_WEBHOOK_SECRET:
+    # Validate Africa's Talking signature in all non-development environments
+    if settings.ENVIRONMENT != "development" and settings.AFRICASTALKING_WEBHOOK_SECRET:
         raw_body = await request.body()
         expected_sig = _hmac.new(
             settings.AFRICASTALKING_WEBHOOK_SECRET.encode(),
             raw_body,
-            __import__('hashlib').sha256,
+            _hashlib.sha256,
         ).hexdigest()
         incoming_sig = request.headers.get("X-AT-Signature", "")
         if not _hmac.compare_digest(expected_sig, incoming_sig):
@@ -1029,7 +1059,7 @@ async def ussd_consent_callback(
             and_(
                 GuarantorAgreement.guarantor_phone == normalised_phone,  # exact match
                 GuarantorAgreement.status == GuarantorStatus.PENDING,
-                GuarantorAgreement.expires_at > datetime.utcnow(),
+                GuarantorAgreement.expires_at > datetime.now(timezone.utc),
             )
         )
     )).scalar_one_or_none()
@@ -1039,7 +1069,7 @@ async def ussd_consent_callback(
 
     if choice == "1":
         agreement.status = GuarantorStatus.ACTIVE
-        agreement.accepted_at = datetime.utcnow()
+        agreement.accepted_at = datetime.now(timezone.utc)
         agreement.audit_log = guarantor_service.append_audit(
             agreement.audit_log or [], "ACCEPTED", "Guarantor accepted via USSD *170#"
         )
