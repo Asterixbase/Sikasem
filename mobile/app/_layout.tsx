@@ -6,7 +6,7 @@
  */
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack, Redirect } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
     },
   },
 });
@@ -29,18 +29,16 @@ function RootLayoutNav() {
     bootstrap();
   }, []);
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/otp-verify');
-    }
-  }, [isLoading, isAuthenticated]);
-
   if (isLoading) {
     return (
       <View style={styles.splash}>
         <ActivityIndicator size="large" color={Colors.g} />
       </View>
     );
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect href="/otp-verify" />;
   }
 
   return (
