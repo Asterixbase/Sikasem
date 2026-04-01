@@ -1,0 +1,85 @@
+{
+  "folders": [
+    {
+      "name": "Sikasem Mobile (Expo)",
+      "path": "./mobile"
+    },
+    {
+      "name": "Sikasem Backend (FastAPI)",
+      "path": "./app"
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.tabSize": 4
+    },
+    "typescript.tsdk": "mobile/node_modules/typescript/lib",
+    "typescript.preferences.importModuleSpecifier": "non-relative",
+    "python.defaultInterpreterPath": "${workspaceFolder:Sikasem Backend (FastAPI)}/../venv/Scripts/python.exe",
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/__pycache__": true,
+      "**/.expo": true,
+      "**/dist": true,
+      "**/android": true,
+      "**/ios": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/__pycache__": true,
+      "**/dist": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "ms-python.python",
+      "ms-python.black-formatter",
+      "ms-python.isort",
+      "ms-python.pylint",
+      "dbaeumer.vscode-eslint",
+      "expo.vscode-expo-tools",
+      "bradlc.vscode-tailwindcss",
+      "eamodio.gitlens",
+      "ms-vscode.vscode-typescript-next"
+    ]
+  },
+  "launch": {
+    "configurations": [
+      {
+        "name": "Expo: Start Android",
+        "type": "node",
+        "request": "launch",
+        "cwd": "${workspaceFolder:Sikasem Mobile (Expo)}",
+        "runtimeExecutable": "npx",
+        "runtimeArgs": ["expo", "start", "--android"],
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "Expo: Start iOS",
+        "type": "node",
+        "request": "launch",
+        "cwd": "${workspaceFolder:Sikasem Mobile (Expo)}",
+        "runtimeExecutable": "npx",
+        "runtimeArgs": ["expo", "start", "--ios"],
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "FastAPI: Start Dev Server",
+        "type": "python",
+        "request": "launch",
+        "module": "uvicorn",
+        "args": ["main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+        "cwd": "${workspaceFolder:Sikasem Backend (FastAPI)}",
+        "console": "integratedTerminal",
+        "env": {
+          "ENVIRONMENT": "development"
+        }
+      }
+    ]
+  }
+}
