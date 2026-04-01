@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",
-    "axios": "^1.7.9",
+    "axios": "1.7.9",
     "expo": "~52.0.0",
     "expo-asset": "~10.0.10",
     "expo-build-properties": "^55.0.10",
