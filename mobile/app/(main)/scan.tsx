@@ -102,7 +102,7 @@ export default function ScanScreen() {
   );
 }
 
-const C = Colors.g;
+const C = Colors.scanPrimary;
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gy },
   msg: { ...Typography.bodyLG, color: Colors.t },

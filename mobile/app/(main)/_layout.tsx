@@ -79,13 +79,13 @@ function OfflineSyncBanner() {
 
 const bannerStyles = StyleSheet.create({
   wrap: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.at,
     paddingVertical: 6,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
   text: {
-    color: '#fff',
+    color: Colors.w,
     fontSize: 12,
     fontWeight: '600',
   },

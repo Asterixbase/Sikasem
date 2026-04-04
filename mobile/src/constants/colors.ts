@@ -1,55 +1,66 @@
 /**
- * Sikasem v1.3 Design Tokens — Colour Palette
- * All values verified from Sikasem_Interactive_Prototype_v3.html
+ * Sikasem Design Tokens — Colour Palette
+ * Hybrid B+C: Light (main app) + Dark (scanner screens)
+ * Build 14 — updated to design-system branch (teal palette, sunlight-optimised)
  */
 
 export const Colors = {
-  // Brand Greens
-  g:  '#1B6B3A',   // CTAs, nav active, hero cards, brand bar
-  g2: '#2e7d32',   // Success states, bar chart fills, hover
-  gl: '#e8f5e9',   // Success backgrounds, metric card hover
-  gx: '#f0fdf4',   // Page tints, AI suggestion banners
+  // ── Brand — Teal ──────────────────────────────────────────────────────
+  g:   '#0F766E',   // Primary — CTAs, nav active, hero cards
+  g2:  '#059669',   // Success states, bar chart fills, positive deltas
+  gl:  '#F0FDFA',   // Primary light bg — metric card tints, AI banners
+  gx:  '#CCFBF1',   // Deeper tint — selected row backgrounds
 
-  // Semantic — Amber (warning)
-  a:  '#fff3e0',   // Amber warning backgrounds
-  at: '#e65100',   // Amber warning text, high-urgency labels
+  // ── Semantic — Amber (warning) ────────────────────────────────────────
+  a:   '#FFFBEB',   // Warning backgrounds
+  at:  '#D97706',   // Warning text, high-urgency labels
 
-  // Semantic — Red (critical)
-  r:  '#ffebee',   // Critical backgrounds, FAILED status rows
-  rt: '#c62828',   // Critical text, OVERDUE badges, FAILED
+  // ── Semantic — Red (critical) ─────────────────────────────────────────
+  r:   '#FFF1F2',   // Critical backgrounds, FAILED status rows
+  rt:  '#E11D48',   // Critical text, OVERDUE badges
 
-  // Semantic — Blue (info)
-  b:  '#e3f2fd',   // Info backgrounds, MoMo status
-  bt: '#1565c0',   // Info text, OCR confidence blue
+  // ── Semantic — Blue (info) ────────────────────────────────────────────
+  b:   '#EFF6FF',   // Info backgrounds, MoMo status
+  bt:  '#0284C7',   // Info text, OCR confidence blue
 
-  // Neutrals
-  gy:  '#f8f8f8',  // Card backgrounds, metric tiles, input backgrounds
-  gy2: '#e5e5e5',  // Borders, dividers, separators
-  t:   '#111111',  // Primary text
-  t2:  '#888888',  // Secondary text, labels, timestamps
-  w:   '#ffffff',  // White
-  wa:  '#25D366',  // WhatsApp CTA buttons
+  // ── Neutrals ──────────────────────────────────────────────────────────
+  gy:  '#F8FAFC',   // Page/card backgrounds, metric tiles
+  gy2: '#E2E8F0',   // Borders, dividers, separators
+  t:   '#0F172A',   // Primary text (slate-900)
+  t2:  '#475569',   // Secondary text, labels, timestamps
+  t3:  '#94A3B8',   // Tertiary/placeholder text
+  w:   '#FFFFFF',   // White
 
-  // WhatsApp UI (inline — not in main palette)
-  waHeader:   '#075E54',
-  waChatBg:   '#ece5dd',
-  waBubbleIn: '#ffffff',   // Incoming — credit confirmation (NOT editable)
-  waBubbleOut:'#dcf8c6',   // Outgoing — supplier order (EDITABLE)
-  waDark:     '#128C7E',
+  // ── WhatsApp ──────────────────────────────────────────────────────────
+  wa:       '#25D366',
+  waHeader: '#075E54',
+  waChatBg: '#ece5dd',
+  waBubbleIn:  '#FFFFFF',
+  waBubbleOut: '#dcf8c6',
+  waDark:   '#128C7E',
 
-  // Admin / Dark Shell
+  // ── Admin / Dark shell ────────────────────────────────────────────────
   shellBg:      '#0d0d1a',
   shellSidebar: '#13131f',
   shellBorder:  '#1e1e2e',
   csvBg:        '#1a1a2e',
   csvText:      '#a8dfbc',
 
-  // Log card border colours by severity
+  // ── Scanner dark theme (Variation C) ─────────────────────────────────
+  scanBg:      '#111827',
+  scanCard:    '#1F2937',
+  scanBorder:  '#374151',
+  scanPrimary: '#10B981',   // Vivid emerald — most visible on dark in sunlight
+  scanAccent:  '#FBBF24',
+  scanText:    '#F9FAFB',
+  scanTextSec: '#D1D5DB',
+
+  // ── Log severity border colours ───────────────────────────────────────
   severity: {
-    success: '#1B6B3A',  // var(--g)
-    warning: '#e65100',  // var(--at)
-    critical:'#c62828',  // var(--rt)
-    info:    '#1565c0',  // var(--bt)
+    success:  '#0F766E',
+    warning:  '#D97706',
+    critical: '#E11D48',
+    info:     '#0284C7',
   },
 } as const;
 
@@ -57,16 +68,16 @@ export type ColorKey = keyof typeof Colors;
 
 /** Badge variant colours */
 export const BadgeColors = {
-  green:  { bg: '#e8f5e9', text: '#2e7d32' },  // .bdg.bg
-  amber:  { bg: '#fff3e0', text: '#e65100' },  // .bdg.ba
-  red:    { bg: '#ffebee', text: '#c62828' },  // .bdg.br
-  blue:   { bg: '#e3f2fd', text: '#1565c0' },  // .bdg.bb
+  green: { bg: '#F0FDFA', text: '#059669' },
+  amber: { bg: '#FFFBEB', text: '#D97706' },
+  red:   { bg: '#FFF1F2', text: '#E11D48' },
+  blue:  { bg: '#EFF6FF', text: '#0284C7' },
 } as const;
 
 /** Credit status badge colours */
 export const CreditStatus = {
-  overdue:      { bg: '#c62828', text: '#ffffff' },
-  dueTomorrow:  { bg: '#b71c1c', text: '#ffffff' },
-  pending:      { bg: '#e5e5e5', text: '#555555' },
-  paid:         { bg: '#e8f5e9', text: '#2e7d32' },
+  overdue:     { bg: '#E11D48', text: '#FFFFFF' },
+  dueTomorrow: { bg: '#BE123C', text: '#FFFFFF' },
+  pending:     { bg: '#E2E8F0', text: '#475569' },
+  paid:        { bg: '#F0FDFA', text: '#059669' },
 } as const;

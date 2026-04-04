@@ -40,7 +40,7 @@ export function Button({ label, variant = 'primary', loading, icon, style, ...pr
 
 const styles = StyleSheet.create({
   btn: {
-    borderRadius: Radius.sm, paddingVertical: 13,
+    borderRadius: Radius.sm, paddingVertical: 14, minHeight: 48,
     alignItems: 'center', justifyContent: 'center',
     marginHorizontal: Spacing.s4, marginVertical: Spacing.s2,
   },

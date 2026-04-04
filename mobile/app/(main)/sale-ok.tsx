@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     width: 88, height: 88, borderRadius: 44,
     backgroundColor: Colors.gl, alignItems: 'center', justifyContent: 'center', marginBottom: 20,
   },
-  circleOffline: { backgroundColor: '#FEF3C7' },
+  circleOffline: { backgroundColor: Colors.a },
   title: { ...Typography.titleLG, color: Colors.g },
   sub: { ...Typography.bodyMD, color: Colors.t2, marginTop: 8 },
   ref: { ...Typography.badge, color: Colors.t2, marginTop: 12 },
