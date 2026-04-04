@@ -10,12 +10,12 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1B6B3A"
+      "backgroundColor": "#0F766E"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "gh.sikasem.app",
-      "buildNumber": "14",
+      "buildNumber": "15",
       "infoPlist": {
         "NSCameraUsageDescription": "Sikasem uses your camera to scan barcodes, product labels, invoices and Ghana Cards.",
         "NSPhotoLibraryUsageDescription": "Sikasem reads photos of invoices and IDs from your library.",
@@ -25,10 +25,10 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1B6B3A"
+        "backgroundColor": "#0F766E"
       },
       "package": "gh.sikasem.app",
-      "versionCode": 14,
+      "versionCode": 15,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
