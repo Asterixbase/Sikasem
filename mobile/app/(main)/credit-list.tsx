@@ -8,6 +8,7 @@ import {
   Badge, LoadingState, ErrorState, Button,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows, CreditStatus } from '@/constants';
+import { fmtDateLong } from '@/utils/date';
 
 type Filter = 'all' | 'overdue' | 'due_tomorrow' | 'pending';
 
@@ -39,14 +40,6 @@ function statusLabel(status: string): string {
   if (status === 'pending') return 'PENDING';
   if (status === 'paid') return 'PAID';
   return status.toUpperCase();
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GH', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
-  } catch { return iso; }
 }
 
 export default function CreditListScreen() {
@@ -98,30 +91,44 @@ export default function CreditListScreen() {
             <Text style={styles.emptyText}>No credit sales found</Text>
           </View>
         ) : (
-          filtered.map((sale: CreditSale) => (
-            <Pressable
-              key={sale.id}
-              style={styles.creditCard}
-              onPress={() => router.push({ pathname: '/(main)/credit-detail', params: { id: sale.id } })}
-            >
-              <View style={styles.creditCardLeft}>
-                <Text style={styles.customerName}>{sale.customer_name}</Text>
-                <Text style={styles.dueDate}>Due {formatDate(sale.due_date)}</Text>
-              </View>
-              <View style={styles.creditCardRight}>
-                <Text style={styles.amount}>
-                  GHS {(sale.amount_pesawas / 100).toFixed(2)}
-                </Text>
-                <View style={styles.badgeRow}>
-                  <Badge
-                    label={statusLabel(sale.status)}
-                    variant={statusBadgeVariant(sale.status)}
-                  />
-                  <Text style={styles.arrow}>→</Text>
+          filtered.map((sale: CreditSale) => {
+            const initials = sale.customer_name
+              .split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('');
+            return (
+              <Pressable
+                key={sale.id}
+                style={styles.creditCard}
+                onPress={() => router.push({ pathname: '/(main)/credit-detail', params: { id: sale.id } })}
+              >
+                {/* Avatar */}
+                <View style={[
+                  styles.avatar,
+                  sale.status === 'overdue' ? styles.avatarRed
+                    : sale.status === 'due_tomorrow' ? styles.avatarAmber
+                    : styles.avatarBlue,
+                ]}>
+                  <Text style={styles.avatarText}>{initials}</Text>
                 </View>
-              </View>
-            </Pressable>
-          ))
+
+                <View style={{ flex: 1 }}>
+                  <View style={styles.cardTopRow}>
+                    <Text style={styles.customerName}>{sale.customer_name}</Text>
+                    <Text style={styles.amount}>GHS {(sale.amount_pesawas / 100).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.cardBottomRow}>
+                    <View>
+                      <Text style={styles.dueDateLabel}>DUE DATE</Text>
+                      <Text style={styles.dueDate}>{fmtDateLong(sale.due_date)}</Text>
+                    </View>
+                    <View style={styles.badgeRow}>
+                      <Badge label={statusLabel(sale.status)} variant={statusBadgeVariant(sale.status)} />
+                      <Text style={styles.details}>Details →</Text>
+                    </View>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })
         )}
 
         {/* Weekly collection target card */}
@@ -157,18 +164,27 @@ const styles = StyleSheet.create({
   },
   emptyText: { ...Typography.bodyLG, color: Colors.t2 },
   creditCard: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.s3,
     backgroundColor: Colors.w, marginHorizontal: Spacing.s4,
     marginBottom: Spacing.s2, borderRadius: Radius.lg,
     padding: Spacing.s4, ...Shadows.card,
   },
-  creditCardLeft: { flex: 1 },
-  creditCardRight: { alignItems: 'flex-end', gap: Spacing.s1 },
-  customerName: { ...Typography.bodyLG, color: Colors.t },
-  dueDate: { ...Typography.bodySM, color: Colors.t2, marginTop: 2 },
-  amount: { ...Typography.titleSM, color: Colors.t },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', marginTop: 2,
+  },
+  avatarRed:   { backgroundColor: Colors.r },
+  avatarAmber: { backgroundColor: Colors.a },
+  avatarBlue:  { backgroundColor: Colors.b },
+  avatarText: { ...Typography.titleSM, color: Colors.t, fontWeight: '700' },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  cardBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: Spacing.s2 },
+  customerName: { ...Typography.bodyMD, color: Colors.t, fontWeight: '600', flex: 1 },
+  dueDateLabel: { ...Typography.micro, color: Colors.t2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  dueDate: { ...Typography.bodySM, color: Colors.t, fontWeight: '500' },
+  amount: { ...Typography.titleSM, color: Colors.t, marginLeft: Spacing.s2 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2 },
-  arrow: { ...Typography.bodyLG, color: Colors.t2 },
+  details: { ...Typography.bodyMD, color: Colors.g, fontWeight: '600' },
   targetCard: {
     margin: Spacing.s4,
     marginTop: Spacing.s3,

@@ -7,6 +7,15 @@ import { dashboardApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { SikasemLogo, MetricTile, LoadingState, ErrorState } from '@/components';
 
+const QUICK_ACTIONS = [
+  { icon: '📷', label: 'Scan',   route: '/(main)/scan' },
+  { icon: '💰', label: 'Sell',   route: '/(main)/sale' },
+  { icon: '🧾', label: 'Tax',    route: '/(main)/tax' },
+  { icon: '💳', label: 'Credit', route: '/(main)/credit-list' },
+  { icon: '📊', label: 'Reports',route: '/(main)/analytics' },
+  { icon: '🏦', label: 'Vault',  route: '/(main)/vault' },
+];
+
 export default function DashScreen() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard'],
@@ -17,59 +26,122 @@ export default function DashScreen() {
   if (error || !data) return <ErrorState message="Could not load dashboard" onRetry={refetch} />;
 
   const d = data;
-  const revenue = `GHS ${(d.today_revenue_pesawas / 100).toLocaleString('en-GH', { minimumFractionDigits: 2 })}`;
+  const totalGHS   = (d.today_revenue_pesawas / 100).toFixed(2);
+  const cashGHS    = ((d.today_cash_pesawas   ?? 0) / 100).toFixed(2);
+  const momoGHS    = ((d.today_momo_pesawas   ?? 0) / 100).toFixed(2);
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── App bar ──────────────────────────────────────────────────────── */}
+      {/* App bar */}
       <View style={styles.appBar}>
         <SikasemLogo size="sm" layout="row" showTagline={false} />
+        <View style={styles.appBarRight}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {(d.shop_name ?? 'S')[0].toUpperCase()}
+            </Text>
+          </View>
+        </View>
       </View>
 
       <ScrollView
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Revenue hero */}
+        {/* Revenue hero — full teal card */}
         <View style={styles.hero}>
-          <Text style={styles.heroLabel}>TODAY'S REVENUE</Text>
-          <Text style={styles.heroAmount}>{revenue}</Text>
-          <Text style={styles.heroSub}>{d.total_skus} SKUs tracked</Text>
-        </View>
-
-        {/* Metric tiles 2×2 grid */}
-        <View style={styles.tilesGrid}>
-          <MetricTile label="Sold Today" value={String(d.sold_today_count)} onPress={() => router.push('/(main)/sold-today')} />
-          <MetricTile label="Low Stock" value={String(d.low_stock_count)} positive={false} onPress={() => router.push('/(main)/low-stock')} />
-          <MetricTile label="Avg Margin" value={`${d.avg_margin_pct.toFixed(1)}%`} positive />
-          <MetricTile label="Total SKUs" value={String(d.total_skus)} onPress={() => router.push('/(main)/skus?id=all')} />
-        </View>
-
-        {/* Alerts */}
-        {d.alerts.map((a, i) => (
-          <View key={i} style={[styles.alert, a.urgency === 'critical' ? styles.alertRed : styles.alertAmber]}>
-            <Text style={styles.alertText}>{a.message}</Text>
+          <Text style={styles.heroLabel}>Today's revenue</Text>
+          <Text style={styles.heroAmount}>GHS {totalGHS}</Text>
+          <View style={styles.heroRow}>
+            <Text style={styles.heroSub}>Cash GHS {cashGHS}</Text>
+            <Text style={styles.heroDot}> · </Text>
+            <Text style={styles.heroSub}>MoMo GHS {momoGHS}</Text>
           </View>
-        ))}
+          {d.revenue_change_pct != null && (
+            <View style={styles.heroBadge}>
+              <Text style={styles.heroBadgeText}>
+                {d.revenue_change_pct >= 0 ? '▲' : '▼'} {Math.abs(d.revenue_change_pct).toFixed(0)}% vs yesterday
+              </Text>
+            </View>
+          )}
+        </View>
 
-        {/* Quick actions */}
-        <View style={styles.actions}>
-          {[
-            { icon: '📷', label: 'Scan', route: '/(main)/scan' },
-            { icon: '💰', label: 'Sale', route: '/(main)/sale' },
-            { icon: '🧾', label: 'Tax', route: '/(main)/tax' },
-            { icon: '💳', label: 'Credit', route: '/(main)/credit-list' },
-            { icon: '📊', label: 'Analytics', route: '/(main)/analytics' },
-            { icon: '🏦', label: 'Vault', route: '/(main)/vault' },
-            { icon: '🔁', label: 'Reorder', route: '/(main)/reorder' },
-            { icon: '🔍', label: 'Search', route: '/(main)/search' },
-            { icon: '📦', label: 'Batch', route: '/(main)/daily-batch' },
-          ].map(a => (
-            <Pressable key={a.route} style={styles.action} onPress={() => router.push(a.route as any)}>
-              <Text style={styles.actionIcon}>{a.icon}</Text>
-              <Text style={styles.actionLabel}>{a.label}</Text>
-            </Pressable>
-          ))}
+        {/* Metric tiles 2×2 */}
+        <View style={styles.tilesGrid}>
+          <MetricTile
+            label="Items sold today"
+            value={String(d.sold_today_count)}
+            change={d.sold_change != null ? `▲ ${d.sold_change} vs yesterday` : undefined}
+            positive
+            onPress={() => router.push('/(main)/sold-today')}
+          />
+          <MetricTile
+            label="Low stock alerts"
+            value={String(d.low_stock_count)}
+            change="Tap to review"
+            positive={false}
+            onPress={() => router.push('/(main)/low-stock')}
+          />
+          <MetricTile
+            label="Avg profit margin"
+            value={`${d.avg_margin_pct.toFixed(1)}%`}
+            change="Tap for details"
+            positive
+            onPress={() => router.push('/(main)/margins')}
+          />
+          <MetricTile
+            label="Total SKUs"
+            value={String(d.total_skus)}
+            change={d.sku_change != null ? `+${d.sku_change} this week` : undefined}
+            onPress={() => router.push('/(main)/skus?id=all')}
+          />
+        </View>
+
+        {/* Alerts with severity dot */}
+        {d.alerts?.length > 0 && (
+          <View style={styles.alertsSection}>
+            <View style={styles.alertsHeader}>
+              <Text style={styles.alertsTitle}>Urgent alerts</Text>
+              <Pressable onPress={() => router.push('/(main)/low-stock')}>
+                <Text style={styles.seeAll}>See all</Text>
+              </Pressable>
+            </View>
+            {d.alerts.map((a: any, i: number) => (
+              <View key={i} style={[
+                styles.alertCard,
+                a.urgency === 'critical' ? styles.alertCardRed
+                  : a.urgency === 'warning' ? styles.alertCardAmber
+                  : styles.alertCardGreen,
+              ]}>
+                <View style={[
+                  styles.alertDot,
+                  { backgroundColor: a.urgency === 'critical' ? Colors.rt
+                      : a.urgency === 'warning' ? Colors.at : Colors.g2 },
+                ]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.alertText}>{a.message}</Text>
+                  {a.detail ? <Text style={styles.alertSub}>{a.detail}</Text> : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Quick actions — 3-column grid */}
+        <View style={styles.actionsSection}>
+          <Text style={styles.actionsTitle}>Quick actions</Text>
+          <View style={styles.actionsGrid}>
+            {QUICK_ACTIONS.map(a => (
+              <Pressable
+                key={a.route}
+                style={styles.actionBtn}
+                onPress={() => router.push(a.route as any)}
+              >
+                <Text style={styles.actionIcon}>{a.icon}</Text>
+                <Text style={styles.actionLabel}>{a.label}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -78,32 +150,70 @@ export default function DashScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.gy },
+
   appBar: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.s4, paddingVertical: 10,
     backgroundColor: Colors.w,
     borderBottomWidth: 1, borderBottomColor: Colors.gy2,
   },
-  hero: {
-    backgroundColor: Colors.g, padding: Spacing.s6, paddingTop: Spacing.s8,
-    margin: Spacing.s4, borderRadius: Radius.xl,
+  appBarRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2 },
+  avatar: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: Colors.g, alignItems: 'center', justifyContent: 'center',
   },
-  heroLabel: { ...Typography.label, color: 'rgba(255,255,255,0.7)' },
-  heroAmount: { ...Typography.displayXL, color: Colors.w, marginTop: 4 },
-  heroSub: { ...Typography.bodySM, color: 'rgba(255,255,255,0.65)', marginTop: 6 },
+  avatarText: { ...Typography.titleSM, color: Colors.w },
+
+  // Hero card
+  hero: {
+    backgroundColor: Colors.g,
+    margin: Spacing.s4,
+    borderRadius: Radius.xl,
+    padding: Spacing.s6,
+  },
+  heroLabel: { ...Typography.label, color: 'rgba(255,255,255,0.75)' },
+  heroAmount: { fontSize: 36, fontWeight: '700', color: Colors.w, marginTop: 4, lineHeight: 44 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  heroSub: { ...Typography.bodySM, color: 'rgba(255,255,255,0.75)' },
+  heroDot: { ...Typography.bodySM, color: 'rgba(255,255,255,0.5)' },
+  heroBadge: {
+    marginTop: 10, alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  heroBadgeText: { ...Typography.badge, color: Colors.w },
+
+  // Metric tiles
   tilesGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
     paddingHorizontal: Spacing.s4, marginBottom: Spacing.s2,
   },
-  alert: { margin: Spacing.s4, padding: Spacing.s3, borderRadius: Radius.md },
-  alertRed: { backgroundColor: Colors.r },
-  alertAmber: { backgroundColor: Colors.a },
-  alertText: { ...Typography.bodyMD, color: Colors.t },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', padding: Spacing.s4, gap: 8 },
-  action: {
-    width: '30%', backgroundColor: Colors.w, borderRadius: Radius.lg,
-    padding: Spacing.s3, alignItems: 'center', ...Shadows.card,
+
+  // Alerts section
+  alertsSection: { paddingHorizontal: Spacing.s4, marginBottom: Spacing.s2 },
+  alertsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.s2 },
+  alertsTitle: { ...Typography.titleSM, color: Colors.t },
+  seeAll: { ...Typography.bodyMD, color: Colors.g, fontWeight: '600' },
+  alertCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.s2,
+    borderRadius: Radius.md, padding: Spacing.s3, marginBottom: Spacing.s2,
+    borderLeftWidth: 3,
   },
-  actionIcon: { fontSize: 24, marginBottom: 4 },
-  actionLabel: { ...Typography.badge, color: Colors.t },
+  alertCardRed:   { backgroundColor: Colors.r,  borderLeftColor: Colors.rt },
+  alertCardAmber: { backgroundColor: Colors.a,  borderLeftColor: Colors.at },
+  alertCardGreen: { backgroundColor: Colors.gl, borderLeftColor: Colors.g2 },
+  alertDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
+  alertText: { ...Typography.bodyMD, color: Colors.t, fontWeight: '600' },
+  alertSub:  { ...Typography.bodySM, color: Colors.t2, marginTop: 2 },
+
+  // Quick actions
+  actionsSection: { paddingHorizontal: Spacing.s4, paddingBottom: Spacing.s8 },
+  actionsTitle: { ...Typography.titleSM, color: Colors.t, marginBottom: Spacing.s3 },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  actionBtn: {
+    width: '30%', backgroundColor: Colors.w, borderRadius: Radius.lg,
+    paddingVertical: Spacing.s4, alignItems: 'center', ...Shadows.card,
+  },
+  actionIcon:  { fontSize: 22, marginBottom: 5 },
+  actionLabel: { ...Typography.badge, color: Colors.t, fontWeight: '600' },
 });

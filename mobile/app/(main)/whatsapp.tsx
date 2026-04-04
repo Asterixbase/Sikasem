@@ -8,14 +8,7 @@ import {
   ChatHeader, ChatBubble, LoadingState, ErrorState,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GH', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
-  } catch { return iso; }
-}
+import { fmtDateLong } from '@/utils/date';
 
 export default function WhatsAppScreen() {
   const params = useLocalSearchParams<{
@@ -37,7 +30,7 @@ export default function WhatsAppScreen() {
   // Fallback message if API not ready or no sale_id
   const amountPesawas = parseInt(params.amount_pesawas ?? '0', 10);
   const formattedAmount = `GHS ${(amountPesawas / 100).toFixed(2)}`;
-  const dueFormatted = params.due_date ? formatDate(params.due_date) : '—';
+  const dueFormatted = params.due_date ? fmtDateLong(params.due_date) : '—';
 
   const fallbackMessage =
     `Hello ${params.customer_name ?? 'Customer'},\n\n` +

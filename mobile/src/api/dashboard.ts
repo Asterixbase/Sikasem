@@ -2,14 +2,20 @@ import { api } from './client';
 
 export interface DashboardResponse {
   today_revenue_pesawas: number;
+  today_cash_pesawas?: number;
+  today_momo_pesawas?: number;
+  revenue_change_pct?: number;
   sold_today_count: number;
+  sold_change?: number;
   low_stock_count: number;
   avg_margin_pct: number;
   total_skus: number;
+  sku_change?: number;
+  shop_name?: string;
   alerts: Alert[];
   quick_actions: string[];
 }
-export interface Alert { type: string; message: string; urgency: string }
+export interface Alert { type: string; message: string; urgency: string; detail?: string }
 
 export interface SoldTodayItem {
   product_id: string; name: string; emoji: string; category: string;

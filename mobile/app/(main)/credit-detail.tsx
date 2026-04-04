@@ -8,6 +8,7 @@ import {
   LoadingState, ErrorState,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { fmtDateLong } from '@/utils/date';
 
 type CreditStatus = 'paid' | 'written_off' | 'overdue' | 'pending' | 'due_tomorrow';
 
@@ -20,14 +21,6 @@ function statusBadgeVariant(status: string): 'red' | 'amber' | 'blue' | 'green' 
 
 function statusLabel(status: string): string {
   return status.replace('_', ' ').toUpperCase();
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GH', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
-  } catch { return iso; }
 }
 
 export default function CreditDetailScreen() {
@@ -130,7 +123,7 @@ export default function CreditDetailScreen() {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Due Date</Text>
             <Text style={styles.detailValue}>
-              {sale.due_date ? formatDate(sale.due_date) : '—'}
+              {sale.due_date ? fmtDateLong(sale.due_date) : '—'}
             </Text>
           </View>
           <View style={styles.divider} />
@@ -154,7 +147,7 @@ export default function CreditDetailScreen() {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Created</Text>
             <Text style={styles.detailValue}>
-              {sale.created_at ? formatDate(sale.created_at) : '—'}
+              {sale.created_at ? fmtDateLong(sale.created_at) : '—'}
             </Text>
           </View>
         </View>

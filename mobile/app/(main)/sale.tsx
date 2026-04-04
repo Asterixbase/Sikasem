@@ -8,16 +8,22 @@ import { salesApi } from '@/api';
 import { useCartStore } from '@/store/cart';
 import { useOfflineQueue, isNetworkError } from '@/store/offlineQueue';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-import { ScreenHeader, QuantityStepper, Button } from '@/components';
+import { QuantityStepper, Button } from '@/components';
+
+const PAYMENT_METHODS = [
+  { key: 'cash',   label: 'Cash' },
+  { key: 'momo',   label: 'MoMo' },
+  { key: 'credit', label: 'Credit' },
+] as const;
 
 export default function SaleScreen() {
   const { items, paymentMethod, setPaymentMethod, setQty, removeItem, totalPesawas, clear } = useCartStore();
   const { enqueue } = useOfflineQueue();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]     = useState(false);
   const [momoPhone, setMomoPhone] = useState('');
 
   const handleSale = async () => {
-    if (items.length === 0) { Alert.alert('Cart empty', 'Add items to the cart first'); return; }
+    if (items.length === 0) { Alert.alert('Cart empty', 'Add items first'); return; }
     setLoading(true);
     try {
       const saleItems = items.map(i => ({
@@ -28,15 +34,12 @@ export default function SaleScreen() {
         await salesApi.collectMomo({ amount_pesawas: totalPesawas(), phone: momoPhone, reference: res.data.reference });
       }
       if (paymentMethod === 'credit') {
-        clear();
-        router.push('/(main)/credit-new');
-        return;
+        clear(); router.push('/(main)/credit-new'); return;
       }
       clear();
       router.push({ pathname: '/(main)/sale-ok', params: { saleId: res.data.sale_id } });
     } catch (err: unknown) {
       if (isNetworkError(err)) {
-        // Device is offline — queue the sale and continue to confirmation
         const saleItems = items.map(i => ({
           product_id: i.product_id, quantity: i.quantity, unit_price_pesawas: i.unit_price_pesawas,
         }));
@@ -52,97 +55,179 @@ export default function SaleScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gy }}>
-      <ScreenHeader title="Quick Sale" right={
-        <Pressable onPress={() => router.push('/(main)/scan')} hitSlop={8}>
-          <Text style={{ fontSize: 22 }}>📷</Text>
+    <SafeAreaView style={styles.safe}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
+          <Text style={styles.backIcon}>←</Text>
         </Pressable>
-      } />
+        <Text style={styles.headerTitle}>Quick sale</Text>
+        <Pressable onPress={() => router.push('/(main)/scan')} hitSlop={8}>
+          <Text style={{ fontSize: 20 }}>📷</Text>
+        </Pressable>
+      </View>
 
-      <ScrollView>
+      <ScrollView style={styles.scroll}>
         {items.length === 0 ? (
           <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>🛒</Text>
             <Text style={styles.emptyText}>Cart is empty</Text>
             <Text style={styles.emptySub}>Scan a barcode or search to add items</Text>
           </View>
-        ) : items.map(item => (
-          <View key={item.product_id} style={styles.item}>
-            <Text style={styles.itemEmoji}>{item.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemPrice}>GHS {(item.unit_price_pesawas/100).toFixed(2)} each</Text>
-            </View>
-            <QuantityStepper value={item.quantity} onChange={q => q === 0 ? removeItem(item.product_id) : setQty(item.product_id, q)} />
-          </View>
-        ))}
-
-        {/* Payment selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>PAYMENT METHOD</Text>
-          <View style={styles.payRow}>
-            {(['cash','momo','credit'] as const).map(m => (
-              <Pressable
-                key={m}
-                onPress={() => setPaymentMethod(m)}
-                style={[styles.payBtn, paymentMethod === m && styles.payBtnActive]}
-              >
-                <Text style={[styles.payLabel, paymentMethod === m && styles.payLabelActive]}>
-                  {m === 'cash' ? '💵 Cash' : m === 'momo' ? '📲 MoMo' : '💳 Credit'}
+        ) : (
+          items.map(item => (
+            <View key={item.product_id} style={styles.itemRow}>
+              <View style={styles.itemEmoji}>
+                <Text style={{ fontSize: 22 }}>{item.emoji}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemPrice}>GHS {(item.unit_price_pesawas / 100).toFixed(2)}</Text>
+              </View>
+              <View style={styles.itemRight}>
+                <QuantityStepper
+                  value={item.quantity}
+                  onChange={q => q === 0 ? removeItem(item.product_id) : setQty(item.product_id, q)}
+                />
+                <Text style={styles.itemTotal}>
+                  GHS {((item.unit_price_pesawas * item.quantity) / 100).toFixed(2)}
                 </Text>
-              </Pressable>
-            ))}
-          </View>
-          {paymentMethod === 'momo' && (
-            <TextInput
-              style={styles.input} placeholder="MoMo phone number (0XXXXXXXXX)"
-              value={momoPhone} onChangeText={setMomoPhone}
-              keyboardType="phone-pad" placeholderTextColor={Colors.t2}
-            />
-          )}
-        </View>
+              </View>
+            </View>
+          ))
+        )}
+
+        {/* Add more items */}
+        <Pressable style={styles.addMore} onPress={() => router.push('/(main)/search')}>
+          <Text style={styles.addMoreText}>＋  Add more items</Text>
+        </Pressable>
       </ScrollView>
 
-      {/* Footer total + confirm */}
+      {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.total}>GHS {(totalPesawas()/100).toFixed(2)}</Text>
-        <Button label="Confirm Sale" onPress={handleSale} loading={loading} style={styles.confirmBtn as any} />
+        {/* Total row */}
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalAmount}>GHS {(totalPesawas() / 100).toFixed(2)}</Text>
+        </View>
+
+        {/* Payment method — equal segments */}
+        <View style={styles.payRow}>
+          {PAYMENT_METHODS.map((m, i) => (
+            <Pressable
+              key={m.key}
+              onPress={() => setPaymentMethod(m.key)}
+              style={[
+                styles.payBtn,
+                i === 0 && styles.payBtnFirst,
+                i === PAYMENT_METHODS.length - 1 && styles.payBtnLast,
+                paymentMethod === m.key && styles.payBtnActive,
+              ]}
+            >
+              <Text style={[styles.payLabel, paymentMethod === m.key && styles.payLabelActive]}>
+                {m.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* MoMo phone input */}
+        {paymentMethod === 'momo' && (
+          <TextInput
+            style={styles.momoInput}
+            placeholder="MoMo phone (0XXXXXXXXX)"
+            value={momoPhone}
+            onChangeText={setMomoPhone}
+            keyboardType="phone-pad"
+            placeholderTextColor={Colors.t3}
+          />
+        )}
+
+        {/* Confirm button */}
+        <Pressable
+          style={[styles.confirmBtn, loading && { opacity: 0.7 }]}
+          onPress={handleSale}
+          disabled={loading}
+        >
+          <Text style={styles.confirmText}>
+            {loading ? 'Processing…' : 'Confirm sale →'}
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  empty: { alignItems: 'center', padding: 40 },
-  emptyText: { ...Typography.titleMD, color: Colors.t },
-  emptySub: { ...Typography.bodyMD, color: Colors.t2, marginTop: 8 },
-  item: {
+  safe: { flex: 1, backgroundColor: Colors.w },
+
+  header: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.w, padding: Spacing.s3,
-    borderBottomWidth: 1, borderBottomColor: Colors.gy,
+    paddingHorizontal: Spacing.s4, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: Colors.gy2,
   },
-  itemEmoji: { fontSize: 24, marginRight: Spacing.s3 },
-  itemName: { ...Typography.bodyLG, color: Colors.t },
-  itemPrice: { ...Typography.bodySM, color: Colors.t2 },
-  section: { padding: Spacing.s4 },
-  sectionLabel: { ...Typography.label, color: Colors.t2, marginBottom: 8 },
-  payRow: { flexDirection: 'row', gap: 8 },
-  payBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: Radius.sm,
-    backgroundColor: Colors.gy, borderWidth: 1, borderColor: Colors.gy2,
-    alignItems: 'center',
+  backBtn: { marginRight: Spacing.s3 },
+  backIcon: { fontSize: 20, color: Colors.t },
+  headerTitle: { ...Typography.titleMD, color: Colors.t, flex: 1 },
+
+  scroll: { flex: 1 },
+
+  empty: { alignItems: 'center', paddingVertical: 60 },
+  emptyIcon: { fontSize: 40, marginBottom: 12 },
+  emptyText: { ...Typography.titleMD, color: Colors.t },
+  emptySub:  { ...Typography.bodyMD, color: Colors.t2, marginTop: 6 },
+
+  itemRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.s4, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: Colors.gy2,
+    gap: Spacing.s3,
   },
-  payBtnActive: { backgroundColor: Colors.gl, borderColor: Colors.g },
-  payLabel: { ...Typography.bodyMD, color: Colors.t2 },
-  payLabelActive: { color: Colors.g, fontWeight: '700' },
-  input: {
-    marginTop: Spacing.s3, borderWidth: 1, borderColor: Colors.gy2,
-    borderRadius: Radius.sm, padding: 11, ...Typography.bodyLG, color: Colors.t,
+  itemEmoji: {
+    width: 44, height: 44, borderRadius: Radius.md,
+    backgroundColor: Colors.gy, alignItems: 'center', justifyContent: 'center',
   },
+  itemName:  { ...Typography.bodyMD, color: Colors.t, fontWeight: '600' },
+  itemPrice: { ...Typography.bodySM, color: Colors.t2, marginTop: 2 },
+  itemRight: { alignItems: 'flex-end', gap: 4 },
+  itemTotal: { ...Typography.bodyMD, color: Colors.t, fontWeight: '700' },
+
+  addMore: { paddingHorizontal: Spacing.s4, paddingVertical: 16 },
+  addMoreText: { ...Typography.bodyMD, color: Colors.g, fontWeight: '600' },
+
   footer: {
-    backgroundColor: Colors.w, padding: Spacing.s4,
     borderTopWidth: 1, borderTopColor: Colors.gy2,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: Spacing.s4, gap: Spacing.s3,
+    backgroundColor: Colors.w,
   },
-  total: { ...Typography.displayMD, color: Colors.g, flex: 1, marginLeft: Spacing.s2 },
-  confirmBtn: { flex: 1, marginHorizontal: 0, marginVertical: 0 },
+  totalRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  totalLabel:  { ...Typography.bodyMD, color: Colors.t2 },
+  totalAmount: { ...Typography.displayMD, color: Colors.t, fontWeight: '700' },
+
+  // Payment segments — equal width, shared border
+  payRow: { flexDirection: 'row', borderWidth: 1.5, borderColor: Colors.gy2, borderRadius: Radius.md, overflow: 'hidden' },
+  payBtn: {
+    flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.w,
+    borderRightWidth: 1, borderRightColor: Colors.gy2,
+  },
+  payBtnFirst: { borderLeftWidth: 0 },
+  payBtnLast:  { borderRightWidth: 0 },
+  payBtnActive: { backgroundColor: Colors.gl },
+  payLabel:       { ...Typography.bodyMD, color: Colors.t2 },
+  payLabelActive: { ...Typography.bodyMD, color: Colors.g, fontWeight: '700' },
+
+  momoInput: {
+    borderWidth: 1.5, borderColor: Colors.gy2, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.s3, paddingVertical: 12,
+    ...Typography.bodyMD, color: Colors.t,
+  },
+
+  confirmBtn: {
+    backgroundColor: Colors.g, borderRadius: Radius.md,
+    paddingVertical: 16, alignItems: 'center', minHeight: 52,
+  },
+  confirmText: { ...Typography.titleSM, color: Colors.w },
 });

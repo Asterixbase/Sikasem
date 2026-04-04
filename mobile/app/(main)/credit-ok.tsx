@@ -5,14 +5,7 @@ import {
   ScreenHeader, SafeScrollView, Button,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GH', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
-  } catch { return iso; }
-}
+import { fmtDateLong } from '@/utils/date';
 
 export default function CreditOkScreen() {
   const params = useLocalSearchParams<{
@@ -79,7 +72,7 @@ export default function CreditOkScreen() {
           <View style={styles.archiveRow}>
             <Text style={styles.archiveLabel}>Maturity Date</Text>
             <Text style={styles.archiveValue}>
-              {params.due_date ? formatDate(params.due_date) : '—'}
+              {params.due_date ? fmtDateLong(params.due_date) : '—'}
             </Text>
           </View>
           <View style={styles.divider} />
