@@ -9,21 +9,27 @@ import {
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 
+// Matches GET /credit/collections CollectionItem schema
 interface CollectionRow {
-  id: string;
-  customer_name: string;
-  ref_number?: string;
+  id: string;              // credit_collection.id
+  credit_sale_id: string;  // used for MoMo retry endpoint
+  customer_id: string;
+  initials: string;
+  name: string;            // customer full name
+  ref: string;
+  network?: string;
   amount_pesawas: number;
-  status: 'SUCCESS' | 'PENDING' | 'FAILED';
+  status: 'success' | 'pending' | 'failed';
 }
 
 function badgeVariant(status: string): 'green' | 'amber' | 'red' {
-  if (status === 'SUCCESS') return 'green';
-  if (status === 'PENDING') return 'amber';
+  if (status === 'success') return 'green';
+  if (status === 'pending') return 'amber';
   return 'red';
 }
 
 function getInitials(name: string): string {
+  if (!name) return '?';
   return name
     .split(' ')
     .slice(0, 2)
@@ -40,25 +46,28 @@ export default function CollectionLogsScreen() {
   });
 
   const retryMutation = useMutation({
-    mutationFn: (id: string) => creditApi.momoRequest(id),
+    // Retry uses the credit_sale_id (not the collection record id)
+    mutationFn: (credit_sale_id: string) => creditApi.momoRequest(credit_sale_id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['collections'] }),
   });
 
   if (isLoading) return <LoadingState message="Loading collection logs…" />;
   if (error) return <ErrorState message="Could not load collection logs" onRetry={refetch} />;
 
-  const collections: CollectionRow[] = data?.collections ?? data ?? [];
+  // Backend returns { items: [...], current_month_total_pesawas, ... }
+  const raw = data?.items ?? data?.collections ?? data;
+  const collections: CollectionRow[] = Array.isArray(raw) ? raw : [];
 
   const collectedPesawas: number = collections
-    .filter((c: CollectionRow) => c.status === 'SUCCESS')
+    .filter((c: CollectionRow) => c.status === 'success')
     .reduce((acc: number, c: CollectionRow) => acc + (c.amount_pesawas ?? 0), 0);
 
   const pendingPesawas: number = collections
-    .filter((c: CollectionRow) => c.status === 'PENDING')
+    .filter((c: CollectionRow) => c.status === 'pending')
     .reduce((acc: number, c: CollectionRow) => acc + (c.amount_pesawas ?? 0), 0);
 
   const activeCount = collections.filter(
-    (c: CollectionRow) => c.status === 'PENDING',
+    (c: CollectionRow) => c.status === 'pending',
   ).length;
 
   return (
@@ -105,14 +114,14 @@ export default function CollectionLogsScreen() {
             <View key={col.id} style={styles.row}>
               {/* Avatar */}
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{getInitials(col.customer_name)}</Text>
+                <Text style={styles.avatarText}>{col.initials || getInitials(col.name)}</Text>
               </View>
 
               {/* Name + ref */}
               <View style={styles.rowMeta}>
-                <Text style={styles.rowName}>{col.customer_name}</Text>
-                {col.ref_number ? (
-                  <Text style={styles.rowRef}>{col.ref_number}</Text>
+                <Text style={styles.rowName}>{col.name}</Text>
+                {col.ref ? (
+                  <Text style={styles.rowRef}>{col.ref}</Text>
                 ) : null}
               </View>
 
@@ -122,13 +131,13 @@ export default function CollectionLogsScreen() {
               </Text>
 
               {/* Badge */}
-              <Badge label={col.status} variant={badgeVariant(col.status)} />
+              <Badge label={col.status.toUpperCase()} variant={badgeVariant(col.status)} />
 
-              {/* Retry button on FAILED only */}
-              {col.status === 'FAILED' ? (
+              {/* Retry button on failed only */}
+              {col.status === 'failed' ? (
                 <Pressable
                   style={styles.retryBtn}
-                  onPress={() => retryMutation.mutate(col.id)}
+                  onPress={() => retryMutation.mutate(col.credit_sale_id)}
                   hitSlop={8}
                 >
                   <Text style={styles.retryIcon}>↺</Text>

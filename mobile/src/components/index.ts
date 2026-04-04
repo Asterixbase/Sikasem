@@ -3,6 +3,7 @@ export { ScreenHeader } from './layout/ScreenHeader';
 export { SafeScrollView } from './layout/SafeScrollView';
 export { HeroCard } from './layout/HeroCard';
 // Common
+export { SikasemLogo } from './common/SikasemLogo';
 export { MetricTile } from './common/MetricTile';
 export { Badge } from './common/Badge';
 export { FilterChip, ChipBar } from './common/FilterChip';

@@ -5,11 +5,26 @@ import { router } from 'expo-router';
 import { productsApi } from '@/api';
 import { Colors, Typography } from '@/constants';
 
+const MODES = [
+  { key: 'barcode', label: 'BARCODE' },
+  { key: 'ocr',     label: 'LABEL OCR' },
+  { key: 'bulk',    label: 'BULK COUNT' },
+] as const;
+
+type ModeKey = typeof MODES[number]['key'];
+
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [activeMode, setActiveMode] = useState<ModeKey>('barcode');
 
   useEffect(() => { if (!permission?.granted) requestPermission(); }, []);
+
+  const handleModePress = (key: ModeKey) => {
+    if (key === 'barcode') { setActiveMode('barcode'); return; }
+    const params = { mode: key };
+    router.replace({ pathname: '/(main)/bulk' as any, params });
+  };
 
   const handleBarcode = async ({ data }: { data: string }) => {
     if (scanned) return;
@@ -53,8 +68,28 @@ export default function ScanScreen() {
             <View style={styles.dot} />
             <Text style={styles.pillText}>ALIGN BARCODE INSIDE FRAME</Text>
           </View>
+          {/* Manual entry shortcut */}
+          <Pressable style={styles.manualBtn} onPress={() => router.push('/(main)/scan-result' as any)}>
+            <Text style={styles.manualText}>＋ Add Item Manually</Text>
+          </Pressable>
         </View>
       </CameraView>
+
+      {/* Mode strip */}
+      <View style={styles.modeStrip}>
+        {MODES.map(m => (
+          <Pressable
+            key={m.key}
+            style={[styles.modeTab, activeMode === m.key && styles.modeTabActive]}
+            onPress={() => handleModePress(m.key)}
+          >
+            <Text style={[styles.modeTabText, activeMode === m.key && styles.modeTabTextActive]}>
+              {m.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       {scanned && (
         <Pressable style={styles.rescanBtn} onPress={() => setScanned(false)}>
           <Text style={styles.rescanText}>Tap to scan again</Text>
@@ -81,13 +116,44 @@ const styles = StyleSheet.create({
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
   br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
   pill: {
-    position: 'absolute', bottom: 120, flexDirection: 'row', alignItems: 'center',
+    marginTop: 24, flexDirection: 'row', alignItems: 'center',
     backgroundColor: C, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, gap: 8,
   },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.w },
   pillText: { ...Typography.badge, color: Colors.w },
+  manualBtn: {
+    marginTop: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  manualText: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
+  // Mode strip
+  modeStrip: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  modeTab: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  modeTabActive: {
+    backgroundColor: C,
+    borderColor: C,
+  },
+  modeTabText: {
+    fontSize: 11, fontWeight: '700', letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  modeTabTextActive: {
+    color: Colors.w,
+  },
   rescanBtn: {
-    position: 'absolute', bottom: 40, alignSelf: 'center',
+    position: 'absolute', bottom: 90, alignSelf: 'center',
     backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10,
   },
   rescanText: { color: Colors.w, fontWeight: '600' },

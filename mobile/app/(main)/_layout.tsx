@@ -22,6 +22,7 @@ import {
 import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 
 import { Colors } from '@/constants';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 
 // ---------------------------------------------------------------------------
 // Scan FAB — center tab button
@@ -57,10 +58,46 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
 const HIDDEN = { href: null } as const;
 
 // ---------------------------------------------------------------------------
+// Offline sync banner
+// ---------------------------------------------------------------------------
+function OfflineSyncBanner() {
+  const { pendingCount, totalSynced, isSyncing } = useOfflineSync();
+
+  // Show only when there's something to report
+  if (pendingCount === 0 && !isSyncing) return null;
+
+  const msg = isSyncing
+    ? `Syncing ${pendingCount} offline sale${pendingCount !== 1 ? 's' : ''}…`
+    : `${pendingCount} sale${pendingCount !== 1 ? 's' : ''} queued offline · will sync on reconnect`;
+
+  return (
+    <View style={bannerStyles.wrap}>
+      <Text style={bannerStyles.text}>{msg}</Text>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  text: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Layout
 // ---------------------------------------------------------------------------
 export default function MainLayout() {
   return (
+    <View style={{ flex: 1 }}>
+    <OfflineSyncBanner />
     <Tabs
       initialRouteName="dash"
       screenOptions={{
@@ -168,6 +205,7 @@ export default function MainLayout() {
       <Tabs.Screen name="permissions"     options={HIDDEN} />
       <Tabs.Screen name="access-logs"     options={HIDDEN} />
     </Tabs>
+    </View>
   );
 }
 

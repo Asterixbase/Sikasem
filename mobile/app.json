@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "gh.sikasem.app",
+      "buildNumber": "14",
       "infoPlist": {
         "NSCameraUsageDescription": "Sikasem uses your camera to scan barcodes, product labels, invoices and Ghana Cards.",
         "NSPhotoLibraryUsageDescription": "Sikasem reads photos of invoices and IDs from your library.",
@@ -27,6 +28,7 @@
         "backgroundColor": "#1B6B3A"
       },
       "package": "gh.sikasem.app",
+      "versionCode": 14,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",

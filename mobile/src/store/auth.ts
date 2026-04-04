@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     userId: null,
     shopId: null,
     phone: null,
-    isLoading: false,
+    isLoading: true,   // true on startup — stays until bootstrap() resolves
     error: null,
 
     /** Called on app start to restore session from SecureStore */

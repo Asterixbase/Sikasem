@@ -15,7 +15,7 @@ import axios, {
 import * as SecureStore from 'expo-secure-store';
 
 // ── Config ────────────────────────────────────────────────────────────────
-export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.sikasem.app/v1';
+export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://sikasem-api.fly.dev/v1';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 // ── SecureStore keys ──────────────────────────────────────────────────────

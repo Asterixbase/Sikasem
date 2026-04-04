@@ -27,7 +27,7 @@
         "distribution": "store"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.sikasem.app/v1",
+        "EXPO_PUBLIC_API_URL": "https://sikasem-api.fly.dev/v1",
         "EXPO_PUBLIC_ENV": "production"
       }
     }
@@ -37,6 +37,10 @@
       "android": {
         "serviceAccountKeyPath": "./google-play-key.json",
         "track": "production"
+      },
+      "ios": {
+        "appleId": "jeffrey102000@hotmail.com",
+        "ascAppId": "6761470903"
       }
     }
   }

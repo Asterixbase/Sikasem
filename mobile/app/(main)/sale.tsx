@@ -6,11 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { salesApi } from '@/api';
 import { useCartStore } from '@/store/cart';
+import { useOfflineQueue, isNetworkError } from '@/store/offlineQueue';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { ScreenHeader, QuantityStepper, Button } from '@/components';
 
 export default function SaleScreen() {
   const { items, paymentMethod, setPaymentMethod, setQty, removeItem, totalPesawas, clear } = useCartStore();
+  const { enqueue } = useOfflineQueue();
   const [loading, setLoading] = useState(false);
   const [momoPhone, setMomoPhone] = useState('');
 
@@ -32,8 +34,18 @@ export default function SaleScreen() {
       }
       clear();
       router.push({ pathname: '/(main)/sale-ok', params: { saleId: res.data.sale_id } });
-    } catch {
-      Alert.alert('Sale failed', 'Please try again');
+    } catch (err: unknown) {
+      if (isNetworkError(err)) {
+        // Device is offline — queue the sale and continue to confirmation
+        const saleItems = items.map(i => ({
+          product_id: i.product_id, quantity: i.quantity, unit_price_pesawas: i.unit_price_pesawas,
+        }));
+        enqueue({ items: saleItems, payment_method: paymentMethod, total_pesawas: totalPesawas() });
+        clear();
+        router.push({ pathname: '/(main)/sale-ok', params: { saleId: 'offline', offline: '1' } });
+      } else {
+        Alert.alert('Sale failed', 'Please try again');
+      }
     } finally {
       setLoading(false);
     }
