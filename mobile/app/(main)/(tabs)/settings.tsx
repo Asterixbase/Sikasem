@@ -204,6 +204,19 @@ export default function SettingsScreen() {
           <Text style={styles.helpArrow}>›</Text>
         </Pressable>
 
+        {/* Log out */}
+        <Pressable
+          style={styles.logoutBtn}
+          onPress={() =>
+            Alert.alert('Log Out', 'Are you sure you want to log out?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Log Out', style: 'destructive', onPress: () => useAuthStore.getState().logout() },
+            ])
+          }
+        >
+          <Text style={styles.logoutText}>Log Out</Text>
+        </Pressable>
+
         {/* Footer */}
         <Text style={styles.footer}>SIKASEM V1.3.0 · Digitizing the African marketplace</Text>
       </SafeScrollView>
@@ -292,6 +305,14 @@ const styles = StyleSheet.create({
   },
   helpText: { ...Typography.bodyLG, color: Colors.bt },
   helpArrow: { fontSize: 18, color: Colors.t2 },
+  logoutBtn: {
+    marginHorizontal: Spacing.s4, marginTop: Spacing.s3,
+    backgroundColor: Colors.w, borderRadius: Radius.lg,
+    padding: Spacing.s4, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.rt,
+  },
+  logoutText: { ...Typography.bodyLG, color: Colors.rt, fontWeight: '700' },
+
   footer: {
     ...Typography.bodySM, color: Colors.t2,
     textAlign: 'center', margin: Spacing.s8,
