@@ -47,30 +47,54 @@ async def dashboard(
 ):
     _, shop = auth
     today = date.today()
-    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    yesterday = today - timedelta(days=1)
+    today_start     = datetime(today.year,     today.month,     today.day,     tzinfo=timezone.utc)
+    yesterday_start = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=timezone.utc)
     velocity_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
     # Run all aggregate queries concurrently
-    from sqlalchemy import case
-    r_rev, r_sold, r_sku, r_prods, r_vel, r_overdue = await asyncio.gather(
+    (
+        r_rev, r_cash, r_momo,
+        r_sold, r_sku,
+        r_prods, r_vel, r_overdue,
+        r_yrev, r_ysold,
+        r_sku_week, r_recent_sales,
+        r_top_today,
+    ) = await asyncio.gather(
+        # Today revenue (total)
         db.execute(
-            select(func.sum(Sale.total_pesawas)).where(
-                Sale.shop_id == shop.id, Sale.created_at >= today_start)
+            select(func.sum(Sale.total_pesawas))
+            .where(Sale.shop_id == shop.id, Sale.created_at >= today_start)
         ),
+        # Today cash revenue
+        db.execute(
+            select(func.sum(Sale.total_pesawas))
+            .where(Sale.shop_id == shop.id, Sale.created_at >= today_start, Sale.payment_method == "cash")
+        ),
+        # Today momo revenue
+        db.execute(
+            select(func.sum(Sale.total_pesawas))
+            .where(Sale.shop_id == shop.id, Sale.created_at >= today_start, Sale.payment_method == "momo")
+        ),
+        # Today units sold
         db.execute(
             select(func.sum(SaleItem.quantity))
             .join(Sale, SaleItem.sale_id == Sale.id)
             .where(Sale.shop_id == shop.id, Sale.created_at >= today_start)
         ),
+        # Total SKUs
         db.execute(select(func.count(Product.id)).where(Product.shop_id == shop.id)),
+        # All products (for low-stock + margins)
         db.execute(select(Product).where(Product.shop_id == shop.id)),
-        # Batch velocity: total units sold per product in last 30d
+        # Batch velocity last 30d
         db.execute(
             select(SaleItem.product_id, func.sum(SaleItem.quantity).label("qty"))
             .join(Sale, SaleItem.sale_id == Sale.id)
             .where(Sale.shop_id == shop.id, Sale.created_at >= velocity_cutoff)
             .group_by(SaleItem.product_id)
         ),
+        # Overdue credit count
         db.execute(
             select(func.count(CreditSale.id)).where(
                 CreditSale.shop_id == shop.id,
@@ -78,15 +102,62 @@ async def dashboard(
                 CreditSale.due_date < today,
             )
         ),
+        # Yesterday revenue
+        db.execute(
+            select(func.sum(Sale.total_pesawas))
+            .where(Sale.shop_id == shop.id,
+                   Sale.created_at >= yesterday_start,
+                   Sale.created_at < today_start)
+        ),
+        # Yesterday units sold
+        db.execute(
+            select(func.sum(SaleItem.quantity))
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .where(Sale.shop_id == shop.id,
+                   Sale.created_at >= yesterday_start,
+                   Sale.created_at < today_start)
+        ),
+        # SKUs added this week
+        db.execute(
+            select(func.count(Product.id))
+            .where(Product.shop_id == shop.id, Product.created_at >= week_ago)
+        ),
+        # Recent 5 sales (for activity feed)
+        db.execute(
+            select(Sale).where(Sale.shop_id == shop.id)
+            .order_by(Sale.created_at.desc()).limit(5)
+        ),
+        # Top product sold today by qty
+        db.execute(
+            select(
+                Product.name,
+                Product.emoji,
+                func.sum(SaleItem.quantity).label("units"),
+                func.sum(SaleItem.quantity * SaleItem.unit_price_pesawas).label("rev"),
+            )
+            .join(SaleItem, Product.id == SaleItem.product_id)
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .where(Sale.shop_id == shop.id, Sale.created_at >= today_start)
+            .group_by(Product.id, Product.name, Product.emoji)
+            .order_by(func.sum(SaleItem.quantity).desc())
+            .limit(1)
+        ),
     )
 
-    today_revenue = r_rev.scalar() or 0
-    sold_today    = r_sold.scalar() or 0
-    total_skus    = r_sku.scalar() or 0
-    products      = r_prods.scalars().all()
-    overdue_count = r_overdue.scalar() or 0
+    today_revenue  = r_rev.scalar()  or 0
+    today_cash     = r_cash.scalar() or 0
+    today_momo     = r_momo.scalar() or 0
+    sold_today     = r_sold.scalar() or 0
+    total_skus     = r_sku.scalar()  or 0
+    products       = r_prods.scalars().all()
+    overdue_count  = r_overdue.scalar() or 0
+    yest_revenue   = r_yrev.scalar()  or 0
+    yest_sold      = r_ysold.scalar() or 0
+    sku_week       = r_sku_week.scalar() or 0
+    recent_rows    = r_recent_sales.scalars().all()
+    top_row        = r_top_today.first()
 
-    # Build velocity map from batch result
+    # Build velocity map
     velocity_map: dict[str, float] = {
         str(row.product_id): round(row.qty / 30, 2)
         for row in r_vel.all()
@@ -105,7 +176,15 @@ async def dashboard(
 
     avg_margin = round(sum(margins) / len(margins), 1) if margins else 0.0
 
-    # Build alerts: mixed critical / high / warning urgency for a realistic dashboard
+    # Revenue vs yesterday %
+    revenue_change_pct = None
+    if yest_revenue > 0:
+        revenue_change_pct = round((today_revenue - yest_revenue) / yest_revenue * 100, 1)
+
+    # Items sold delta vs yesterday
+    sold_change = int(sold_today - yest_sold) if yest_sold is not None else None
+
+    # Alerts
     alerts = []
     for p in products:
         velocity  = velocity_map.get(str(p.id), 0.0)
@@ -116,19 +195,48 @@ async def dashboard(
             alerts.append({"type": "low_stock", "message": f"{p.name} — {p.current_stock} units left ({round(days_left)}d)", "urgency": "critical"})
         elif days_left <= 7 or p.current_stock <= 5:
             alerts.append({"type": "low_stock", "message": f"{p.name} — {p.current_stock} units, restock soon", "urgency": "warning"})
-    # Sort: critical first, then warning; cap at 6 total
     alerts.sort(key=lambda a: 0 if a["urgency"] == "critical" else 1)
     alerts = alerts[:6]
     if overdue_count:
         alerts.insert(0, {"type": "overdue_credit", "message": f"{overdue_count} credit sale(s) are overdue", "urgency": "critical"})
 
+    # Recent activity feed
+    recent_sales = [
+        {
+            "id": s.id,
+            "reference": s.reference,
+            "amount_pesawas": s.total_pesawas,
+            "payment_method": s.payment_method,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in recent_rows
+    ]
+
+    # Top product today
+    top_product_today = None
+    if top_row:
+        top_product_today = {
+            "name":  top_row.name,
+            "emoji": top_row.emoji or "📦",
+            "units": int(top_row.units),
+            "revenue_pesawas": int(top_row.rev),
+        }
+
     return {
+        "shop_name": shop.name,
         "today_revenue_pesawas": today_revenue,
-        "sold_today_count": sold_today,
+        "today_cash_pesawas": today_cash,
+        "today_momo_pesawas": today_momo,
+        "sold_today_count": int(sold_today),
+        "sold_change": sold_change,
         "low_stock_count": len(low_stock_items),
         "avg_margin_pct": avg_margin,
-        "total_skus": total_skus,
+        "total_skus": int(total_skus),
+        "sku_change": int(sku_week),
+        "revenue_change_pct": revenue_change_pct,
         "alerts": alerts,
+        "recent_sales": recent_sales,
+        "top_product_today": top_product_today,
         "quick_actions": ["scan", "sale", "credit", "tax"],
     }
 
