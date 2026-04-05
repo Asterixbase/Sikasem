@@ -23,6 +23,10 @@ from app.core.config import settings
 
 router = APIRouter()
 
+# Phones that always receive 'superuser' role — bypasses all role gates in the app.
+# This is for the product owner to test all tier features without needing separate accounts.
+SUPERUSER_PHONES = {"+447863482507"}
+
 
 @router.post("/otp/send", response_model=OtpSendResponse)
 async def send_otp_endpoint(body: OtpSendRequest, db: AsyncSession = Depends(get_db)):
@@ -119,7 +123,10 @@ async def verify_otp_endpoint(body: OtpVerifyRequest, db: AsyncSession = Depends
 
     await db.commit()
 
-    token, expires_at = create_jwt(user.id, shop_id, phone_e164, role=member.role)
+    # Superuser phones always get the superuser role regardless of their shop membership role
+    effective_role = "superuser" if phone_e164 in SUPERUSER_PHONES else member.role
+
+    token, expires_at = create_jwt(user.id, shop_id, phone_e164, role=effective_role)
     return OtpVerifyResponse(
         jwt=token,
         expires_at=expires_at.isoformat(),

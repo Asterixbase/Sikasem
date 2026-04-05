@@ -7,30 +7,34 @@ import { useAuthStore, ShopRole } from '@/store/auth';
 import { useRole } from '@/hooks/useRole';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { SafeScrollView, Button, Badge } from '@/components';
+import { useThemeStore, THEMES, ThemeId } from '@/store/theme';
 
 const ROLE_LABELS: Record<ShopRole, string> = {
-  owner:   'Owner',
-  manager: 'Manager',
-  staff:   'Staff',
+  owner:     'Owner',
+  manager:   'Manager',
+  staff:     'Staff',
+  superuser: 'Superuser',
 };
 
 const ROLE_PERMISSIONS: Record<ShopRole, string[]> = {
-  owner:   ['Full access', 'Treasury & payouts', 'Team management', 'All reports'],
-  manager: ['Sales & inventory', 'Credit management', 'Reports', 'No treasury access'],
-  staff:   ['Scan & sell only', 'No financial data', 'No team management'],
+  owner:     ['Full access', 'Treasury & payouts', 'Team management', 'All reports'],
+  manager:   ['Sales & inventory', 'Credit management', 'Reports', 'No treasury access'],
+  staff:     ['Scan & sell only', 'No financial data', 'No team management'],
+  superuser: ['All features unlocked', 'Bypass all role gates', 'Theme testing', 'Full admin access'],
 };
 
 function roleVariant(role: ShopRole): 'green' | 'blue' | 'amber' {
-  if (role === 'owner')   return 'green';
+  if (role === 'owner' || role === 'superuser') return 'green';
   if (role === 'manager') return 'blue';
   return 'amber';
 }
 
 export default function SettingsScreen() {
   const { shopId, role } = useAuthStore();
-  const { isOwner } = useRole();
+  const { isOwner, isSuperuser } = useRole();
   const [online, setOnline] = useState(true);
   const [dpaConsent, setDpaConsent] = useState(true);
+  const { themeId, setTheme } = useThemeStore();
 
   const { data } = useQuery({
     queryKey: ['shop', shopId],
@@ -105,6 +109,41 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+        </View>
+
+        {/* Superuser banner */}
+        {isSuperuser && (
+          <View style={styles.superuserBanner}>
+            <Text style={styles.superuserIcon}>⚡</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.superuserTitle}>Superuser Mode Active</Text>
+              <Text style={styles.superuserSub}>All role gates bypassed · Full feature access enabled</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Theme picker */}
+        <Text style={styles.sectionHeader}>APP THEME</Text>
+        <View style={styles.themeCard}>
+          <Text style={styles.themeHint}>Choose a colour theme to test</Text>
+          <View style={styles.themeRow}>
+            {(Object.values(THEMES) as typeof THEMES[ThemeId][]).map(t => (
+              <Pressable
+                key={t.id}
+                style={[styles.themeSwatch, themeId === t.id && styles.themeSwatchActive]}
+                onPress={() => setTheme(t.id)}
+              >
+                <View style={[styles.swatchDot, { backgroundColor: t.swatch }]} />
+                <Text style={[styles.swatchLabel, themeId === t.id && styles.swatchLabelActive]}>
+                  {t.label}
+                </Text>
+                {themeId === t.id && <Text style={styles.swatchCheck}>✓</Text>}
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.themeNote}>
+            Theme colours apply to buttons, cards and the hero. Restart the app if needed.
+          </Text>
         </View>
 
         {/* Team Members — owner only, Pro tier to manage */}
@@ -257,4 +296,34 @@ const styles = StyleSheet.create({
     ...Typography.bodySM, color: Colors.t2,
     textAlign: 'center', margin: Spacing.s8,
   },
+
+  // Superuser banner
+  superuserBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.s3,
+    marginHorizontal: Spacing.s4, marginTop: Spacing.s4,
+    backgroundColor: '#1e1b4b', borderRadius: Radius.lg,
+    padding: Spacing.s4,
+  },
+  superuserIcon: { fontSize: 24 },
+  superuserTitle: { ...Typography.titleSM, color: '#c4b5fd', marginBottom: 2 },
+  superuserSub: { ...Typography.bodySM, color: '#a5b4fc' },
+
+  // Theme picker
+  themeCard: {
+    marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
+    borderRadius: Radius.lg, padding: Spacing.s4, ...Shadows.card,
+  },
+  themeHint: { ...Typography.bodyMD, color: Colors.t2, marginBottom: Spacing.s3 },
+  themeRow: { flexDirection: 'row', gap: Spacing.s2, marginBottom: Spacing.s3 },
+  themeSwatch: {
+    flex: 1, alignItems: 'center', paddingVertical: Spacing.s3,
+    borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.gy2,
+    gap: 4,
+  },
+  themeSwatchActive: { borderColor: Colors.g, backgroundColor: Colors.gl },
+  swatchDot: { width: 22, height: 22, borderRadius: 11 },
+  swatchLabel: { ...Typography.badge, color: Colors.t2 },
+  swatchLabelActive: { color: Colors.g, fontWeight: '700' },
+  swatchCheck: { fontSize: 11, color: Colors.g, fontWeight: '700' },
+  themeNote: { ...Typography.bodySM, color: Colors.t3, lineHeight: 18 },
 });

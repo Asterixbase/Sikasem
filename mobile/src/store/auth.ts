@@ -16,7 +16,7 @@ import {
   STORAGE,
 } from '@/api';
 
-export type ShopRole = 'owner' | 'manager' | 'staff';
+export type ShopRole = 'owner' | 'manager' | 'staff' | 'superuser';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -41,7 +41,7 @@ function decodeJwtRole(token: string): ShopRole {
     const payload = token.split('.')[1];
     const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
     const role = decoded?.role;
-    if (role === 'owner' || role === 'manager' || role === 'staff') return role;
+    if (role === 'owner' || role === 'manager' || role === 'staff' || role === 'superuser') return role;
   } catch {}
   return 'staff';
 }

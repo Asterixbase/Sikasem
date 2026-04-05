@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { SikasemLogo, MetricTile, LoadingState, ErrorState } from '@/components';
+import { useThemePalette } from '@/store/theme';
 
 const QUICK_ACTIONS = [
   { icon: '📷', label: 'Scan',   route: '/(main)/scan' },
@@ -17,6 +18,7 @@ const QUICK_ACTIONS = [
 ];
 
 export default function DashScreen() {
+  const theme = useThemePalette();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.get().then(r => r.data),
@@ -45,7 +47,7 @@ export default function DashScreen() {
           </Pressable>
           <Pressable
             onPress={() => router.push('/(main)/(tabs)/settings' as any)}
-            style={styles.avatar}
+            style={[styles.avatar, { backgroundColor: theme.primary }]}
           >
             <Text style={styles.avatarText}>
               {(d.shop_name ?? 'S')[0].toUpperCase()}
@@ -58,8 +60,8 @@ export default function DashScreen() {
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Revenue hero — full teal card */}
-        <View style={styles.hero}>
+        {/* Revenue hero — full brand card */}
+        <View style={[styles.hero, { backgroundColor: theme.primary }]}>
           <Text style={styles.heroLabel}>Today's revenue</Text>
           <Text style={styles.heroAmount}>GHS {totalGHS}</Text>
           <View style={styles.heroRow}>

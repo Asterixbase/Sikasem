@@ -9,12 +9,14 @@ import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 
 import { Colors } from '@/constants';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { useThemePalette } from '@/store/theme';
 
 function ScanFAB({ onPress }: BottomTabBarButtonProps) {
+  const theme = useThemePalette();
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={styles.fab}
+      style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel="Scan"
@@ -49,6 +51,7 @@ const bannerStyles = StyleSheet.create({
 });
 
 export default function TabsLayout() {
+  const theme = useThemePalette();
   return (
     <View style={{ flex: 1 }}>
       <OfflineSyncBanner />
@@ -56,7 +59,7 @@ export default function TabsLayout() {
         initialRouteName="dash"
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.g,
+          tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: Colors.t2,
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.tabLabel,

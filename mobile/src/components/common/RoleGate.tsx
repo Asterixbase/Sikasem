@@ -30,15 +30,17 @@ interface RoleGateProps {
 }
 
 const ROLE_LABELS: Record<ShopRole, string> = {
-  owner:   'Shop Owner',
-  manager: 'Manager',
-  staff:   'Staff',
+  owner:     'Shop Owner',
+  manager:   'Manager',
+  staff:     'Staff',
+  superuser: 'Superuser',
 };
 
 export function RoleGate({ allowed, feature, description, tierGated, children }: RoleGateProps) {
   const role = useAuthStore(s => s.role);
 
-  if (allowed.includes(role)) {
+  // superuser bypasses all role gates
+  if (role === 'superuser' || allowed.includes(role)) {
     return <>{children}</>;
   }
 
