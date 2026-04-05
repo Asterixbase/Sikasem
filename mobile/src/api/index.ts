@@ -7,5 +7,5 @@ export { creditApi } from './credit';
 export { analyticsApi } from './analytics';
 export { taxApi } from './tax';
 export { inventoryApi } from './inventory';
-export { vaultApi } from './vault';
+export { treasuryApi, vaultApi } from './vault';
 export { adminApi } from './admin';

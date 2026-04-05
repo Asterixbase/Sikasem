@@ -19,8 +19,12 @@ export function FilterChip({ label, active, onPress }: ChipProps) {
 interface ChipBarProps { chips: { label: string; value: string }[]; active: string; onChange: (v: string) => void }
 export function ChipBar({ chips, active, onChange }: ChipBarProps) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.bar}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.barOuter}
+      contentContainerStyle={styles.bar}
+    >
       {chips.map(c => (
         <FilterChip key={c.value} label={c.label} active={active === c.value} onPress={() => onChange(c.value)} />
       ))}
@@ -37,5 +41,6 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.g, borderColor: Colors.g },
   text: { ...Typography.badge, color: Colors.t2 },
   textActive: { color: Colors.w },
-  bar: { paddingHorizontal: Spacing.s4, paddingVertical: 8 },
+  barOuter: { flexGrow: 0, flexShrink: 0 },
+  bar: { paddingHorizontal: Spacing.s4, paddingVertical: 8, flexDirection: 'row', alignItems: 'center' },
 });

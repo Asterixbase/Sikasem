@@ -16,11 +16,14 @@ import {
   STORAGE,
 } from '@/api';
 
+export type ShopRole = 'owner' | 'manager' | 'staff';
+
 interface AuthState {
   isAuthenticated: boolean;
   userId: string | null;
   shopId: string | null;
   phone: string | null;
+  role: ShopRole;
   isLoading: boolean;
   error: string | null;
 
@@ -32,6 +35,17 @@ interface AuthState {
   clearError: () => void;
 }
 
+/** Decode the role claim from a JWT without verifying the signature (signature is verified server-side). */
+function decodeJwtRole(token: string): ShopRole {
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    const role = decoded?.role;
+    if (role === 'owner' || role === 'manager' || role === 'staff') return role;
+  } catch {}
+  return 'staff';
+}
+
 export const useAuthStore = create<AuthState>((set, get) => {
   // Wire the API client 401-logout callback to this store's logout action
   registerLogoutHandler(() => get().logout());
@@ -41,7 +55,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
     userId: null,
     shopId: null,
     phone: null,
-    isLoading: true,   // true on startup — stays until bootstrap() resolves
+    role: 'owner',    // default — overwritten on bootstrap/login
+    isLoading: true,  // true on startup — stays until bootstrap() resolves
     error: null,
 
     /** Called on app start to restore session from SecureStore */
@@ -55,7 +70,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
         }
         const userId = await SecureStore.getItemAsync(STORAGE.USER_ID);
         const shopId  = await SecureStore.getItemAsync(STORAGE.SHOP_ID);
-        set({ isAuthenticated: true, userId, shopId, isLoading: false });
+        const role    = decodeJwtRole(token);
+        set({ isAuthenticated: true, userId, shopId, role, isLoading: false });
       } catch {
         set({ isAuthenticated: false, isLoading: false });
       }
@@ -77,8 +93,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ isLoading: true, error: null });
       try {
         const data = await authApi.verifyOtp({ phone, code });
-        // JWT already stored in SecureStore by authApi.verifyOtp
-        set({ isAuthenticated: true, phone, isLoading: false });
+        // JWT stored in SecureStore by authApi.verifyOtp; decode role from it
+        const token = await getAccessToken();
+        const role = token ? decodeJwtRole(token) : 'owner';
+        set({ isAuthenticated: true, phone, role, isLoading: false });
         router.replace('/(main)/dash');
       } catch (err: unknown) {
         const msg = extractMessage(err);
@@ -94,6 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         userId: null,
         shopId: null,
         phone: null,
+        role: 'owner',
         error: null,
       });
       router.replace('/otp-verify');

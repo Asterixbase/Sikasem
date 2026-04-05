@@ -429,7 +429,35 @@ async def run(phone_e164: str, db_url: str) -> None:
             )
             print(f"  + {ref}  [{coll_st.upper()}]")
 
-        # ── 9. Tax invoices (14) ────────────────────────────────────────────────
+        # ── 9. Vault payouts (6) ────────────────────────────────────────────────
+        print("\nVault payouts…")
+        VAULT_PAYOUTS = [
+            ("Kwame Osei",  "+233241234567", "mtn",     120000, "success", 8),
+            ("Ama Mensah",  "+233203456789", "mtn",     250000, "success", 15),
+            ("Kofi Asante", "+233244987654", "mtn",      80000, "success", 20),
+            ("Shop Owner",  "+233277000001", "telecel",  60000, "failed",  12),
+            ("Shop Owner",  "+233277000001", "telecel", 180000, "success",  5),
+            ("Efua Nyarko", "+233203445566", "mtn",      45000, "pending",  2),
+        ]
+        for name, phone, network, amount, status, days_ago in VAULT_PAYOUTS:
+            payout_ref = f"PAY-SEED-{name[:3].upper()}-{days_ago}"
+            if await conn.fetchval(
+                "SELECT 1 FROM vault_payouts WHERE shop_id=$1 AND external_ref=$2",
+                shop_id, payout_ref,
+            ):
+                print(f"  skip {name}"); continue
+            paid_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+            await conn.execute(
+                """INSERT INTO vault_payouts
+                    (id, shop_id, amount_pesawas, recipient_phone, recipient_name,
+                     network, status, fee_pesawas, external_ref, created_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)""",
+                str(uuid.uuid4()), shop_id, amount, phone, name,
+                network, status, 0, payout_ref, paid_at,
+            )
+            print(f"  + {name}  GHS {amount/100:.2f}  [{status.upper()}]")
+
+        # ── 10. Tax invoices (14) ────────────────────────────────────────────────
         print("\nTax invoices…")
         current_period = date.today().strftime("%Y-%m")
         for inv_no, day_offset, vendor, tin, total_p, inv_type in TAX_INVOICES:
@@ -468,7 +496,7 @@ async def run(phone_e164: str, db_url: str) -> None:
             "\n✅  Seed complete.\n"
             f"    52 products  ·  30 cash sales  ·  8 MoMo sales\n"
             f"    10 credit customers  ·  20 credit sales (10 pending/overdue + 10 paid)\n"
-            f"    20 collection records  ·  14 tax invoices\n"
+            f"    20 collection records  ·  6 vault payouts  ·  14 tax invoices\n"
             f"    Low stock: milo_400 (3), sardines (2), pringles (3), chin_chin (2)\n"
             f"    Vault: GHS {momo_total_p/100:.2f} available\n"
             f"    Tax: input VAT GHS {total_input_vat/100:.2f}  "

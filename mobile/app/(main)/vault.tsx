@@ -46,7 +46,7 @@ export default function VaultScreen() {
 
   const d = data ?? {};
   const total: number = d.total_pesawas ?? 1245000;
-  const available: number = d.available_pesawas ?? 1080000;
+  const available: number = d.available_payout_pesawas ?? d.available_pesawas ?? 1080000;
   const momo: number = d.momo_collections_pesawas ?? 165000;
   const todayDelta: number = d.today_change_pesawas ?? 120000;
   const activity: Activity[] = d.recent_activity ?? MOCK_ACTIVITY;

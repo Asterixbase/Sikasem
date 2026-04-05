@@ -57,7 +57,7 @@ export default function BulkResultScreen() {
       <ScreenHeader
         title="Bulk Result"
         subtitle="OCR DETECTION"
-        onBack={() => router.push('/(main)/scan')}
+        onBack={() => router.back()}
       />
 
       <SafeScrollView>
@@ -117,7 +117,7 @@ export default function BulkResultScreen() {
         <Button
           label="Discard"
           variant="secondary"
-          onPress={() => router.push('/(main)/scan')}
+          onPress={() => router.back()}
         />
       </SafeScrollView>
     </View>

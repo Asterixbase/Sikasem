@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { creditApi } from '@/api';
@@ -36,9 +36,20 @@ export default function CreditDetailScreen() {
   const patchMutation = useMutation({
     mutationFn: (status: 'paid' | 'written_off' | 'overdue') =>
       creditApi.updateStatus(id, status),
-    onSuccess: () => {
+    onSuccess: (res: any, status) => {
       queryClient.invalidateQueries({ queryKey: ['credit-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['credit-list'] });
+      if (status === 'paid' && res?.data?.wa_confirmation_url) {
+        const waUrl = res.data.wa_confirmation_url;
+        Alert.alert(
+          'Payment Recorded',
+          'Send WhatsApp confirmation to the customer?',
+          [
+            { text: 'Skip', style: 'cancel' },
+            { text: 'Send WA', onPress: () => Linking.openURL(waUrl) },
+          ]
+        );
+      }
     },
     onError: (e: any) =>
       Alert.alert('Error', e?.response?.data?.detail ?? 'Action failed'),

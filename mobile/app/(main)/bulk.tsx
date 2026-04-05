@@ -43,10 +43,20 @@ export default function BulkScreen() {
           params: { data: JSON.stringify(res.data) },
         });
       } else {
-        // Route to bulk-result (item count result)
+        // Normalise bulk-scan response → bulk-result expected shape
+        const raw = res.data;
+        const normalised = {
+          detected_qty: raw.quantity ?? 0,
+          strategy_label: raw.strategy_label ?? 'AI Estimate',
+          confidence_scores: {
+            product_name: Math.round((raw.confidence ?? 0) * 100),
+            quantity: Math.round((raw.confidence ?? 0) * 100),
+            unit_price: Math.round((raw.confidence ?? 0) * 80),
+          },
+        };
         router.push({
           pathname: '/(main)/bulk-result',
-          params: { data: JSON.stringify(res.data) },
+          params: { data: JSON.stringify(normalised) },
         });
       }
     } catch (e: any) {
@@ -84,8 +94,9 @@ export default function BulkScreen() {
 
         {/* Top bar */}
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.push('/(main)/scan')} style={styles.backBtn} hitSlop={8}>
-            <Text style={styles.backIcon}>‹</Text>
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+            <Text style={styles.backIcon}>←</Text>
+            <Text style={styles.backLabel}>Back</Text>
           </Pressable>
 
           <View style={styles.orientPill}>
@@ -162,16 +173,18 @@ const styles = StyleSheet.create({
 
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    paddingTop: 52, paddingHorizontal: Spacing.s4,
+    paddingTop: 56, paddingHorizontal: Spacing.s4,
     flexDirection: 'row', alignItems: 'center', gap: Spacing.s2,
+    zIndex: 20,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: Spacing.s2,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(0,0,0,0.70)',
   },
-  backIcon: { fontSize: 24, color: Colors.w, lineHeight: 28, marginTop: -2 },
+  backIcon: { fontSize: 18, color: Colors.w, lineHeight: 22 },
+  backLabel: { ...Typography.badge, color: Colors.w, fontWeight: '700' },
   orientPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: Radius.full,

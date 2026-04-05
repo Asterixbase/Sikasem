@@ -28,12 +28,13 @@ def verify_otp_hash(code: str, hashed: str) -> bool:
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
-def create_jwt(user_id: str, shop_id: str, phone: str) -> tuple[str, datetime]:
+def create_jwt(user_id: str, shop_id: str, phone: str, role: str = "owner") -> tuple[str, datetime]:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "shop_id": shop_id,
         "phone": phone,
+        "role": role,
         "exp": expire,
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)

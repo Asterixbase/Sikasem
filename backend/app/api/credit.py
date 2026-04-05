@@ -10,11 +10,11 @@ POST /v1/credit/sales/{id}/whatsapp
 GET  /v1/credit/collections
 """
 import uuid
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, extract
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.deps import get_current_shop
@@ -125,6 +125,19 @@ async def create_credit_sale(
     )
 
 
+def _compute_status(cs: CreditSale) -> str:
+    """Derive display status from stored status + due date."""
+    if cs.status in ("paid", "written_off"):
+        return cs.status
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+    if cs.due_date < today:
+        return "overdue"
+    if cs.due_date == tomorrow:
+        return "due_tomorrow"
+    return "pending"
+
+
 @router.get("/sales")
 async def list_credit_sales(
     auth=Depends(get_current_shop),
@@ -139,11 +152,12 @@ async def list_credit_sales(
     for cs in sales:
         customer = await db.get(CreditCustomer, cs.customer_id)
         out.append({
+            "id": cs.id,
             "credit_sale_id": cs.id,
             "reference": cs.reference,
             "amount_pesawas": cs.amount_pesawas,
             "due_date": cs.due_date.isoformat(),
-            "status": cs.status,
+            "status": _compute_status(cs),
             "customer_name": customer.full_name if customer else "",
             "customer_phone": customer.phone if customer else "",
             "initials": _initials(customer.full_name) if customer else "??",
@@ -164,15 +178,19 @@ async def get_credit_sale(
         raise HTTPException(status_code=404, detail="Credit sale not found")
     customer = await db.get(CreditCustomer, cs.customer_id)
     return {
+        "id": cs.id,
         "credit_sale_id": cs.id,
         "reference": cs.reference,
         "amount_pesawas": cs.amount_pesawas,
         "due_date": cs.due_date.isoformat(),
-        "status": cs.status,
+        "status": _compute_status(cs),
         "customer_name": customer.full_name if customer else "",
         "customer_phone": customer.phone if customer else "",
+        "momo_phone": customer.momo_phone if customer else None,
+        "id_type": customer.id_type if customer else None,
         "initials": _initials(customer.full_name) if customer else "??",
         "momo_queued_at": cs.momo_queued_at.isoformat() if cs.momo_queued_at else None,
+        "created_at": cs.created_at.isoformat() if cs.created_at else None,
     }
 
 
@@ -187,9 +205,27 @@ async def update_credit_status(
     cs = await db.get(CreditSale, credit_sale_id)
     if not cs or cs.shop_id != shop.id:
         raise HTTPException(status_code=404, detail="Credit sale not found")
+
+    prev_status = cs.status
     cs.status = body.status
     await db.commit()
-    return {"credit_sale_id": cs.id, "status": cs.status}
+
+    # When marking paid, build WhatsApp confirmation URL
+    wa_url = None
+    if body.status == "paid" and prev_status != "paid":
+        customer = await db.get(CreditCustomer, cs.customer_id)
+        if customer:
+            amount_ghs = cs.amount_pesawas / 100
+            paid_date = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            msg = (
+                f"Dear {customer.full_name}, your credit payment of GHS {amount_ghs:.2f} "
+                f"(Ref: {cs.reference}) has been received on {paid_date}. "
+                f"Thank you for your prompt payment! — {shop.name}"
+            )
+            wa_phone = (customer.phone or "").replace("+", "").replace(" ", "")
+            wa_url = f"https://wa.me/{wa_phone}?text={msg.replace(' ', '%20')}"
+
+    return {"credit_sale_id": cs.id, "status": cs.status, "wa_confirmation_url": wa_url}
 
 
 @router.post("/sales/{credit_sale_id}/momo-request")
@@ -257,14 +293,14 @@ async def collection_logs(
 ):
     _, shop = auth
     now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=60)
 
     result = await db.execute(
         select(CreditCollection)
         .join(CreditSale, CreditCollection.credit_sale_id == CreditSale.id)
         .where(
             CreditSale.shop_id == shop.id,
-            extract("month", CreditCollection.created_at) == now.month,
-            extract("year", CreditCollection.created_at) == now.year,
+            CreditCollection.created_at >= cutoff,
         )
         .order_by(CreditCollection.created_at.desc())
     )

@@ -3,31 +3,32 @@ import { View, Text, StyleSheet, Switch, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api';
-import { useAuthStore } from '@/store/auth';
+import { useAuthStore, ShopRole } from '@/store/auth';
+import { useRole } from '@/hooks/useRole';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { SafeScrollView, Button, Badge } from '@/components';
 
-interface StaffMember {
-  id: string;
-  name: string;
-  role: string;
-  initials: string;
-}
+const ROLE_LABELS: Record<ShopRole, string> = {
+  owner:   'Owner',
+  manager: 'Manager',
+  staff:   'Staff',
+};
 
-const MOCK_STAFF: StaffMember[] = [
-  { id: '1', name: 'Ama Mensah', role: 'Manager', initials: 'AM' },
-  { id: '2', name: 'Kofi Arhin', role: 'Cashier', initials: 'KA' },
-  { id: '3', name: 'Yuki Tanaka', role: 'Inventory', initials: 'YT' },
-];
+const ROLE_PERMISSIONS: Record<ShopRole, string[]> = {
+  owner:   ['Full access', 'Treasury & payouts', 'Team management', 'All reports'],
+  manager: ['Sales & inventory', 'Credit management', 'Reports', 'No treasury access'],
+  staff:   ['Scan & sell only', 'No financial data', 'No team management'],
+};
 
-function roleVariant(role: string): 'green' | 'blue' | 'amber' {
-  if (role === 'Manager') return 'green';
-  if (role === 'Inventory') return 'blue';
+function roleVariant(role: ShopRole): 'green' | 'blue' | 'amber' {
+  if (role === 'owner')   return 'green';
+  if (role === 'manager') return 'blue';
   return 'amber';
 }
 
 export default function SettingsScreen() {
-  const { shopId } = useAuthStore();
+  const { shopId, role } = useAuthStore();
+  const { isOwner } = useRole();
   const [online, setOnline] = useState(true);
   const [dpaConsent, setDpaConsent] = useState(true);
 
@@ -87,22 +88,53 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* Staff Management */}
-        <Text style={styles.sectionHeader}>STAFF MANAGEMENT</Text>
-        <View style={styles.staffList}>
-          {MOCK_STAFF.map((member, idx) => (
-            <View key={member.id} style={[styles.staffRow, idx === MOCK_STAFF.length - 1 && styles.noBorder]}>
-              <View style={styles.staffAvatar}>
-                <Text style={styles.staffInitials}>{member.initials}</Text>
-              </View>
-              <Text style={styles.staffName}>{member.name}</Text>
-              <Badge label={member.role} variant={roleVariant(member.role)} />
+        {/* My Role */}
+        <Text style={styles.sectionHeader}>MY ROLE</Text>
+        <View style={styles.myRoleCard}>
+          <View style={styles.myRoleRow}>
+            <View style={styles.roleIconWrap}>
+              <Text style={styles.roleIcon}>{role === 'owner' ? '👑' : role === 'manager' ? '🗂️' : '🛒'}</Text>
             </View>
-          ))}
-          <Pressable style={styles.addStaffBtn} onPress={() => Alert.alert('Add Staff', 'Staff invitation coming soon')}>
-            <Text style={styles.addStaffText}>+ Add staff member</Text>
-          </Pressable>
+            <View style={styles.roleInfo}>
+              <View style={styles.roleTitleRow}>
+                <Text style={styles.roleName}>{ROLE_LABELS[role as ShopRole] ?? 'Staff'}</Text>
+                <Badge label={ROLE_LABELS[role as ShopRole] ?? 'STAFF'} variant={roleVariant(role as ShopRole)} />
+              </View>
+              <Text style={styles.rolePermSummary}>
+                {(ROLE_PERMISSIONS[role as ShopRole] ?? ROLE_PERMISSIONS.staff).join(' · ')}
+              </Text>
+            </View>
+          </View>
         </View>
+
+        {/* Team Members — owner only, Pro tier to manage */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeader}>TEAM MEMBERS</Text>
+          {isOwner && <Badge label="PRO" variant="green" />}
+        </View>
+        {isOwner ? (
+          <View style={styles.staffList}>
+            <View style={styles.teamsProBanner}>
+              <Text style={styles.teamsProText}>
+                🔐 Invite staff and assign roles to control what each person can see and do.
+              </Text>
+              <Button
+                label="Invite Team Member"
+                variant="primary"
+                style={styles.inviteBtn}
+                onPress={() => Alert.alert('Team Members', 'Staff invitation is coming in the next update.')}
+              />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.staffList}>
+            <View style={styles.nonOwnerTeams}>
+              <Text style={styles.nonOwnerTeamsText}>
+                🔒 Team management is only available to the shop owner.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* System toggles */}
         <Text style={styles.sectionHeader}>SYSTEM</Text>
@@ -176,25 +208,34 @@ const styles = StyleSheet.create({
     ...Typography.label, color: Colors.t2,
     paddingHorizontal: Spacing.s4, paddingTop: Spacing.s4, paddingBottom: Spacing.s2,
   },
+  myRoleCard: {
+    marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
+    borderRadius: Radius.lg, padding: Spacing.s4, ...Shadows.card,
+  },
+  myRoleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  roleIconWrap: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.gy,
+    alignItems: 'center', justifyContent: 'center', marginRight: Spacing.s3,
+  },
+  roleIcon: { fontSize: 22 },
+  roleInfo: { flex: 1 },
+  roleTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  roleName: { ...Typography.titleSM, color: Colors.t },
+  rolePermSummary: { ...Typography.bodySM, color: Colors.t2, lineHeight: 18 },
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: Spacing.s4, paddingTop: Spacing.s4, paddingBottom: Spacing.s2,
+  },
   staffList: {
     marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
     borderRadius: Radius.lg, overflow: 'hidden', ...Shadows.card,
   },
-  staffRow: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: Spacing.s4, borderBottomWidth: 1, borderBottomColor: Colors.gy2,
-  },
+  teamsProBanner: { padding: Spacing.s4 },
+  teamsProText: { ...Typography.bodyMD, color: Colors.t2, lineHeight: 20, marginBottom: Spacing.s3 },
+  inviteBtn: { marginHorizontal: 0, marginVertical: 0 },
+  nonOwnerTeams: { padding: Spacing.s4 },
+  nonOwnerTeamsText: { ...Typography.bodyMD, color: Colors.t2, lineHeight: 20 },
   noBorder: { borderBottomWidth: 0 },
-  staffAvatar: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.g,
-    alignItems: 'center', justifyContent: 'center', marginRight: Spacing.s3,
-  },
-  staffInitials: { ...Typography.badge, color: Colors.w, fontWeight: '700' },
-  staffName: { ...Typography.bodyLG, color: Colors.t, flex: 1 },
-  addStaffBtn: {
-    padding: Spacing.s4, alignItems: 'center',
-  },
-  addStaffText: { ...Typography.bodyMD, color: Colors.g2, fontWeight: '600' },
   toggleList: {
     marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
     borderRadius: Radius.lg, overflow: 'hidden', ...Shadows.card,

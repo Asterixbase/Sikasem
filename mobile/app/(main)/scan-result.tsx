@@ -1,36 +1,82 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Alert, Pressable, Modal,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { productsApi, api } from '@/api';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { Pressable } from 'react-native';
+import { productsApi } from '@/api';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
 import { ScreenHeader, FormInput, Button, Badge } from '@/components';
+import { useOcrLabelStore } from '@/store/ocrLabel';
 
 export default function ScanResultScreen() {
   const { barcode } = useLocalSearchParams<{ barcode: string }>();
 
   // Form fields
-  const [name, setName]           = useState('');
-  const [brand, setBrand]         = useState('');
-  const [sellPrice, setSellPrice] = useState('');
-  const [buyPrice, setBuyPrice]   = useState('');
-  const [stock, setStock]         = useState('1');
+  const [name, setName]             = useState('');
+  const [brand, setBrand]           = useState('');
+  const [sellPrice, setSellPrice]   = useState('');
+  const [buyPrice, setBuyPrice]     = useState('');
+  const [stock, setStock]           = useState('1');
   const [categoryId, setCategoryId] = useState('');
 
-  // AI state
-  const [suggestion, setSuggestion] = useState<{ name: string; confidence: number } | null>(null);
-  const [saving, setSaving]         = useState(false);
+  const [suggestion, setSuggestion]     = useState<{ name: string; confidence: number } | null>(null);
+  const [saving, setSaving]             = useState(false);
+  const [ocrDone, setOcrDone]           = useState(false);
+  const [ocrAttempted, setOcrAttempted] = useState(false);
+  const [existingProductId, setExistingProductId] = useState<string | null>(null);
 
-  // Label-capture OCR state
-  const [showCamera, setShowCamera]   = useState(false);
-  const [ocrLoading, setOcrLoading]   = useState(false);
-  const [ocrDone, setOcrDone]         = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView>(null);
+  // On mount: if we have a barcode, check if the product already exists in the DB.
+  // If it does → pre-fill all fields immediately (no OCR needed).
+  // If not    → auto-launch label camera to OCR the label.
+  useEffect(() => {
+    if (!barcode) return;
+    productsApi.getByBarcode(barcode)
+      .then(r => {
+        const p = r.data as any;
+        setName(p.name ?? '');
+        setBrand('');   // not stored on Product model separately
+        setSellPrice(p.sell_price_pesawas ? String((p.sell_price_pesawas / 100).toFixed(2)) : '');
+        setBuyPrice(p.buy_price_pesawas   ? String((p.buy_price_pesawas  / 100).toFixed(2)) : '');
+        setCategoryId(p.category_id ?? '');
+        setExistingProductId(p.product_id ?? p.id ?? null);
+        setOcrDone(true);   // fields are pre-filled — skip OCR launch
+      })
+      .catch(() => {
+        // Product not in DB — launch camera for OCR
+        const t = setTimeout(() => router.push('/(main)/camera-label'), 400);
+        return () => clearTimeout(t);
+      });
+  }, [barcode]);
+
+  // When camera-label screen returns, populate fields from the OCR store snapshot.
+  // Read directly from Zustand getState() — no dependency on React render cycle,
+  // which avoids the race where router.back() fires before scan-result re-renders.
+  useFocusEffect(
+    React.useCallback(() => {
+      const snap = useOcrLabelStore.getState();
+      const ocr  = snap.result;
+      if (!ocr) return;
+
+      let filled = 0;
+      if (ocr.product_name?.value) { setName(String(ocr.product_name.value));   filled++; }
+      if (ocr.brand?.value)        { setBrand(String(ocr.brand.value));          filled++; }
+      if (ocr.sell_price?.value)   {
+        setSellPrice(String((Number(ocr.sell_price.value) / 100).toFixed(2)));   filled++;
+      }
+      if (ocr.buy_price?.value)    {
+        setBuyPrice(String((Number(ocr.buy_price.value) / 100).toFixed(2)));     filled++;
+      }
+      if (ocr.quantity?.value)     { setStock(String(ocr.quantity.value));       filled++; }
+      if (ocr.barcode?.value && !barcode) {
+        // If the OCR picked up a barcode and we don't already have one, use it
+        // (scan-result doesn't have a setter for barcode param, but we can pre-fill name at minimum)
+      }
+
+      setOcrAttempted(true);
+      setOcrDone(filled > 0);   // only mark "done" if at least one field was extracted
+      snap.clear();
+    }, [barcode])  // barcode is stable, used for the barcode fallback check above
+  );
 
   // Auto-suggest category when name changes
   useEffect(() => {
@@ -42,47 +88,12 @@ export default function ScanResultScreen() {
     }
   }, [name]);
 
-  // Auto-open camera for label scan if barcode was just captured
-  useEffect(() => {
-    if (barcode && !ocrDone) {
-      // Small delay so the screen finishes mounting first
-      const t = setTimeout(() => setShowCamera(true), 400);
-      return () => clearTimeout(t);
-    }
-  }, [barcode]);
-
-  const handleLabelCapture = async () => {
-    if (ocrLoading || !cameraRef.current) return;
-    setOcrLoading(true);
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
-      if (!photo?.base64) throw new Error('No image captured');
-
-      const res = await api.post('/ocr/extract', { image_base64: photo.base64 }, {
-        params: { hint: 'invoice' },
-      });
-
-      // Pre-fill form from OCR result
-      const d = res.data;
-      if (d.product_name?.value)  setName(d.product_name.value);
-      if (d.brand?.value)         setBrand(d.brand.value);
-      if (d.sell_price?.value)    setSellPrice(String(d.sell_price.value / 100));
-      if (d.buy_price?.value)     setBuyPrice(String(d.buy_price.value / 100));
-      if (d.quantity?.value)      setStock(String(d.quantity.value));
-
-      setOcrDone(true);
-      setShowCamera(false);
-    } catch (e: any) {
-      const msg = e?.response?.data?.detail ?? e?.message ?? 'Could not read label';
-      Alert.alert('OCR Failed', msg);
-    } finally {
-      setOcrLoading(false);
-    }
-  };
+  // (camera auto-launch is now handled inside the barcode lookup effect above)
 
   const handleSave = async () => {
     if (!name || !sellPrice || !buyPrice || !categoryId) {
-      Alert.alert('Incomplete', 'Please fill all required fields'); return;
+      Alert.alert('Incomplete', 'Please fill all required fields');
+      return;
     }
     setSaving(true);
     try {
@@ -92,7 +103,7 @@ export default function ScanResultScreen() {
         buy_price_pesawas:  Math.round(parseFloat(buyPrice)  * 100),
         initial_stock: parseInt(stock, 10),
       });
-      router.replace('/(main)/dash');
+      router.replace('/(main)/(tabs)/dash');
     } catch {
       Alert.alert('Error', 'Could not save product');
     } finally {
@@ -100,77 +111,42 @@ export default function ScanResultScreen() {
     }
   };
 
-  // ── Camera modal for label OCR ────────────────────────────────────────────
-  const renderCameraModal = () => (
-    <Modal visible={showCamera} animationType="slide" onRequestClose={() => setShowCamera(false)}>
-      <View style={styles.cameraRoot}>
-        {permission?.granted ? (
-          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill}>
-            <View style={styles.cameraOverlay}>
-              <View style={styles.cameraTopBar}>
-                <Pressable onPress={() => setShowCamera(false)} style={styles.cameraClose} hitSlop={8}>
-                  <Text style={styles.cameraCloseText}>✕</Text>
-                </Pressable>
-                <View style={styles.cameraPill}>
-                  <Text style={styles.cameraPillText}>POINT AT PRODUCT LABEL</Text>
-                </View>
-              </View>
-
-              {/* Label frame guide */}
-              <View style={styles.labelFrame}>
-                <View style={[styles.corner, styles.tl]} />
-                <View style={[styles.corner, styles.tr]} />
-                <View style={[styles.corner, styles.bl]} />
-                <View style={[styles.corner, styles.br]} />
-              </View>
-
-              <Text style={styles.cameraHint}>Align the label within the frame</Text>
-
-              <Pressable
-                onPress={handleLabelCapture}
-                style={styles.captureBtn}
-                disabled={ocrLoading}
-              >
-                {ocrLoading
-                  ? <ActivityIndicator color={Colors.w} size="large" />
-                  : <View style={styles.captureInner} />}
-              </Pressable>
-            </View>
-          </CameraView>
-        ) : (
-          <View style={styles.permCenter}>
-            <Text style={styles.permMsg}>Camera permission required</Text>
-            <Pressable onPress={requestPermission} style={styles.permBtn}>
-              <Text style={styles.permBtnText}>Grant Permission</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    </Modal>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gy }}>
-      {renderCameraModal()}
       <ScreenHeader title="New Product" subtitle={barcode || 'Manual Entry'} />
       <ScrollView contentContainerStyle={{ padding: Spacing.s4 }}>
 
-        {/* Barcode + Label correlation banner */}
-        <View style={styles.ocrBanner}>
+        {/* Barcode + OCR banner */}
+        <View style={[styles.ocrBanner, ocrAttempted && !ocrDone && styles.ocrBannerWarn, existingProductId && styles.ocrBannerSuccess]}>
           <View style={styles.ocrBannerLeft}>
-            <Text style={styles.ocrBannerIcon}>{ocrDone ? '✓' : '📷'}</Text>
-            <View>
+            <Text style={styles.ocrBannerIcon}>
+              {existingProductId ? '📦' : ocrDone ? '✓' : ocrAttempted ? '⚠️' : '📷'}
+            </Text>
+            <View style={{ flex: 1 }}>
               <Text style={styles.ocrBannerTitle}>
-                {ocrDone ? 'Label scanned — fields pre-filled' : 'Scan product label'}
+                {existingProductId
+                  ? 'Product found — update details'
+                  : ocrDone
+                  ? 'Label scanned — fields pre-filled'
+                  : ocrAttempted
+                  ? 'Label scanned — fill in manually'
+                  : 'Scan product label'}
               </Text>
               <Text style={styles.ocrBannerSub}>
-                {barcode ? `Barcode: ${barcode}` : 'No barcode — manual entry'}
+                {existingProductId
+                  ? `Barcode ${barcode} is already in your inventory`
+                  : ocrAttempted && !ocrDone
+                  ? 'Could not read label — try a clearer photo'
+                  : barcode ? `Barcode: ${barcode}` : 'No barcode — manual entry'}
               </Text>
             </View>
           </View>
-          {!ocrDone && (
-            <Pressable style={styles.ocrBtn} onPress={() => setShowCamera(true)}>
-              <Text style={styles.ocrBtnText}>Scan Label</Text>
+          {!ocrDone && !existingProductId && (
+            <Pressable
+              style={[styles.ocrBtn, ocrAttempted && styles.ocrBtnRescan]}
+              onPress={() => { setOcrAttempted(false); router.push('/(main)/camera-label'); }}
+            >
+              <Text style={styles.ocrBtnText}>{ocrAttempted ? 'Retry' : 'Scan Label'}</Text>
             </Pressable>
           )}
         </View>
@@ -179,7 +155,7 @@ export default function ScanResultScreen() {
         {suggestion && (
           <View style={styles.aiBanner}>
             <Text style={styles.aiText}>AI Category: {suggestion.name}</Text>
-            <Badge label={`${suggestion.confidence}%`} variant="green" />
+            <Badge label={`${Math.round(suggestion.confidence * 100)}%`} variant="green" />
           </View>
         )}
 
@@ -193,84 +169,36 @@ export default function ScanResultScreen() {
           variant="secondary"
           onPress={() => router.push({ pathname: '/(main)/cat', params: { categoryId } })}
         />
-        <Button label="Save Product" onPress={handleSave} loading={saving} />
+        <Button label={existingProductId ? 'Update Product' : 'Save Product'} onPress={handleSave} loading={saving} />
         <Button label="Discard" variant="secondary" onPress={() => router.back()} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const C = Colors.scanPrimary;
 const styles = StyleSheet.create({
-  // OCR correlation banner
   ocrBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: Colors.w, borderRadius: Radius.md, padding: Spacing.s3,
     marginBottom: Spacing.s3, borderWidth: 1, borderColor: Colors.gy2,
   },
+  ocrBannerWarn:    { borderColor: Colors.at, backgroundColor: '#FFFBEB' },
+  ocrBannerSuccess: { borderColor: Colors.g,  backgroundColor: '#F0FDF4' },
+  ocrBtnRescan: { backgroundColor: Colors.at },
   ocrBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2, flex: 1 },
   ocrBannerIcon: { fontSize: 22 },
   ocrBannerTitle: { ...Typography.titleSM, color: Colors.t },
   ocrBannerSub: { ...Typography.bodySM, color: Colors.t2, marginTop: 2 },
   ocrBtn: {
     backgroundColor: Colors.g, borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.s3, paddingVertical: 7, minHeight: 36,
+    paddingHorizontal: Spacing.s3, paddingVertical: 8,
     alignItems: 'center', justifyContent: 'center',
   },
   ocrBtnText: { ...Typography.badge, color: Colors.w, fontWeight: '700' },
-
-  // AI banner
   aiBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: Colors.gx, borderRadius: Radius.md,
     padding: Spacing.s3, marginBottom: Spacing.s3,
   },
   aiText: { ...Typography.bodyMD, color: Colors.g, flex: 1, marginRight: 8 },
-
-  // Camera modal
-  cameraRoot: { flex: 1, backgroundColor: '#0a0a0a' },
-  cameraOverlay: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-  },
-  cameraTopBar: {
-    position: 'absolute', top: 52, left: 16, right: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-  },
-  cameraClose: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cameraCloseText: { color: Colors.w, fontSize: 16, fontWeight: '700' },
-  cameraPill: {
-    backgroundColor: Colors.g, borderRadius: Radius.full,
-    paddingHorizontal: 14, paddingVertical: 7,
-  },
-  cameraPillText: { ...Typography.badge, color: Colors.w },
-  // Label frame corners
-  labelFrame: { width: 260, height: 160, position: 'relative', marginBottom: 24 },
-  corner: { position: 'absolute', width: 28, height: 28, borderColor: C, borderWidth: 3 },
-  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
-  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
-  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
-  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
-  cameraHint: {
-    color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600',
-    backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 6, marginBottom: 32,
-  },
-  captureBtn: {
-    width: 72, height: 72, borderRadius: 36,
-    borderWidth: 4, borderColor: Colors.w,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  captureInner: {
-    width: 54, height: 54, borderRadius: 27,
-    backgroundColor: Colors.w,
-  },
-  permCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gy },
-  permMsg: { ...Typography.bodyLG, color: Colors.t, marginBottom: Spacing.s4 },
-  permBtn: { backgroundColor: Colors.g, borderRadius: Radius.sm, paddingHorizontal: Spacing.s5, paddingVertical: Spacing.s3 },
-  permBtnText: { ...Typography.titleSM, color: Colors.w },
 });

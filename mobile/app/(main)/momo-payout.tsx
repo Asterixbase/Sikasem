@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { vaultApi } from '@/api';
+import { treasuryApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-import { ScreenHeader, SafeScrollView, HeroCard, Button, FormInput, LoadingState, ErrorState } from '@/components';
+import { ScreenHeader, SafeScrollView, HeroCard, Button, FormInput, LoadingState, ErrorState, RoleGate } from '@/components';
 
-type Network = 'mtn' | 'telecel';
+type Network = 'mtn' | 'telecel' | 'airteltigo';
 
 export default function MomoPayoutScreen() {
   const [amount, setAmount] = useState('');
@@ -14,14 +14,14 @@ export default function MomoPayoutScreen() {
   const [network, setNetwork] = useState<Network>('mtn');
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['vault-balance'],
-    queryFn: () => vaultApi.balance().then(r => r.data),
+    queryKey: ['treasury-balance'],
+    queryFn: () => treasuryApi.balance().then(r => r.data),
   });
 
   const { mutate: sendPayout, isPending } = useMutation({
     mutationFn: () => {
       const pesawas = Math.round(parseFloat(amount) * 100);
-      return vaultApi.payout({ amount_pesawas: pesawas, recipient_phone: phone, network });
+      return treasuryApi.payout({ amount_pesawas: pesawas, recipient_phone: phone, network });
     },
     onSuccess: () => {
       Alert.alert('Payout Sent', 'MoMo payout has been initiated');
@@ -30,10 +30,10 @@ export default function MomoPayoutScreen() {
     onError: () => Alert.alert('Error', 'Payout failed. Please try again.'),
   });
 
-  if (isLoading) return <LoadingState message="Loading vault…" />;
-  if (error) return <ErrorState message="Could not load vault balance" />;
+  if (isLoading) return <LoadingState message="Loading treasury…" />;
+  if (error) return <ErrorState message="Could not load treasury balance" />;
 
-  const available: number = data?.available_pesawas ?? 1080000;
+  const available: number = data?.available_payout_pesawas ?? data?.available_pesawas ?? 1080000;
   const availableGHS = (available / 100).toFixed(2);
 
   const handleConfirm = () => {
@@ -62,6 +62,7 @@ export default function MomoPayoutScreen() {
   return (
     <View style={styles.root}>
       <ScreenHeader title="MoMo Payout" />
+      <RoleGate allowed={['owner']} feature="MoMo Payout" description="Only the shop owner can initiate payouts from the Treasury.">
       <SafeScrollView>
         {/* Hero */}
         <HeroCard
@@ -127,6 +128,14 @@ export default function MomoPayoutScreen() {
             <Text style={[styles.networkName, network === 'telecel' && styles.networkNameActive]}>Telecel</Text>
             <Text style={styles.networkSub}>Cash</Text>
           </Pressable>
+          <Pressable
+            style={[styles.networkCard, network === 'airteltigo' && styles.networkActiveAT]}
+            onPress={() => setNetwork('airteltigo')}
+          >
+            <Text style={styles.networkEmoji}>📡</Text>
+            <Text style={[styles.networkName, network === 'airteltigo' && styles.networkNameAT]}>AirtelTigo</Text>
+            <Text style={styles.networkSub}>Money</Text>
+          </Pressable>
         </View>
 
         {/* Security note */}
@@ -142,6 +151,7 @@ export default function MomoPayoutScreen() {
           onPress={handleConfirm}
         />
       </SafeScrollView>
+      </RoleGate>
     </View>
   );
 }
@@ -190,10 +200,12 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: Colors.gy2,
   },
   networkActive: { borderColor: '#FFB300' },
-  networkEmoji: { fontSize: 28, marginBottom: 4 },
-  networkName: { ...Typography.titleMD, color: Colors.t },
+  networkActiveAT: { borderColor: '#E02020' },
+  networkEmoji: { fontSize: 24, marginBottom: 4 },
+  networkName: { ...Typography.bodySM, color: Colors.t, fontWeight: '700', textAlign: 'center' },
   networkNameActive: { color: '#FFB300' },
-  networkSub: { ...Typography.bodySM, color: Colors.t2 },
+  networkNameAT: { color: '#E02020' },
+  networkSub: { ...Typography.micro, color: Colors.t2 },
   secNote: {
     margin: Spacing.s4, alignItems: 'center',
   },

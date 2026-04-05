@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing } from '@/constants';
+import { screenPad } from '@/utils/layout';
 
 interface Props {
   title: string;
@@ -37,8 +38,9 @@ export function ScreenHeader({ title, subtitle, showBack = true, onBack, right }
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.s4, paddingVertical: 10,
+    paddingHorizontal: screenPad, paddingVertical: 12,
     backgroundColor: Colors.w, borderBottomWidth: 1, borderBottomColor: Colors.gy2,
+    minHeight: 52,
   },
   back: {
     width: 32, height: 32, borderRadius: 16,

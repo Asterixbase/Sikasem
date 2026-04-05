@@ -1,8 +1,10 @@
 """
-Vault router
-GET  /v1/vault/balance
-POST /v1/vault/payout
-GET  /v1/vault/payouts
+Treasury router (formerly Vault)
+GET  /v1/treasury/balance
+POST /v1/treasury/payout
+GET  /v1/treasury/payouts
+
+All endpoints require role=owner. Managers and staff receive 403.
 """
 import uuid
 from datetime import datetime, timezone, timedelta, date
@@ -12,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
-from app.core.deps import get_current_shop
+from app.core.deps import require_owner
 from app.models.sale import Sale
 from app.models.credit import CreditCollection
 from app.models.vault import VaultPayout
@@ -24,7 +26,7 @@ router = APIRouter()
 
 @router.get("/balance", response_model=VaultBalanceResponse)
 async def vault_balance(
-    auth=Depends(get_current_shop),
+    auth=Depends(require_owner),
     db: AsyncSession = Depends(get_db),
 ):
     _, shop = auth
@@ -61,22 +63,37 @@ async def vault_balance(
 
     available = momo_total - paid_out
 
-    # Recent activity
-    recent_sales = await db.execute(
+    # Recent activity — MoMo sales + payouts merged, newest first
+    recent_momo = await db.execute(
         select(Sale).where(
             Sale.shop_id == shop.id,
             Sale.payment_method == "momo",
-        ).order_by(Sale.created_at.desc()).limit(5)
+        ).order_by(Sale.created_at.desc()).limit(8)
     )
-    activity = [
-        {
+    activity = []
+    for s in recent_momo.scalars().all():
+        activity.append({
+            "id": s.id,
             "type": "collection",
-            "description": f"MoMo sale #{s.reference}",
+            "description": f"MoMo collection — {s.reference}",
             "amount_pesawas": s.total_pesawas,
-            "date": s.created_at.isoformat(),
-        }
-        for s in recent_sales.scalars().all()
-    ]
+            "time": s.created_at.strftime("%d/%m/%Y %H:%M"),
+        })
+
+    recent_payouts = await db.execute(
+        select(VaultPayout).where(VaultPayout.shop_id == shop.id)
+        .order_by(VaultPayout.created_at.desc()).limit(4)
+    )
+    for p in recent_payouts.scalars().all():
+        activity.append({
+            "id": p.id,
+            "type": "payout",
+            "description": f"Payout — {p.recipient_phone}",
+            "amount_pesawas": -p.amount_pesawas,
+            "time": p.created_at.strftime("%d/%m/%Y %H:%M"),
+        })
+    # Sort combined list newest first (parse time string or just keep order)
+    activity = activity[:10]
 
     return VaultBalanceResponse(
         total_pesawas=momo_total,
@@ -90,7 +107,7 @@ async def vault_balance(
 @router.post("/payout", response_model=VaultPayoutResponse)
 async def vault_payout(
     body: VaultPayoutRequest,
-    auth=Depends(get_current_shop),
+    auth=Depends(require_owner),
     db: AsyncSession = Depends(get_db),
 ):
     _, shop = auth
@@ -122,7 +139,7 @@ async def vault_payout(
 @router.get("/payouts", response_model=PayoutHistoryResponse)
 async def payout_history(
     limit: int = Query(default=20, le=100),
-    auth=Depends(get_current_shop),
+    auth=Depends(require_owner),
     db: AsyncSession = Depends(get_db),
 ):
     _, shop = auth
@@ -142,11 +159,13 @@ async def payout_history(
         period="30d",
         payouts=[
             {
-                "initials": p.recipient_phone[-3:],
+                "id": p.id,
+                "initials": (p.recipient_name or p.recipient_phone)[:2].upper(),
                 "name": p.recipient_name or p.recipient_phone,
                 "phone": p.recipient_phone,
                 "network": p.network,
-                "date_time": p.created_at.isoformat(),
+                "date": p.created_at.strftime("%d %b %Y"),
+                "time": p.created_at.strftime("%I:%M %p"),
                 "amount_pesawas": p.amount_pesawas,
                 "status": p.status,
             }

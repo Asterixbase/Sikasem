@@ -52,3 +52,19 @@ async def get_current_shop(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
 
     return user, shop
+
+
+async def require_owner(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Like get_current_shop but raises 403 if the caller is not the shop owner."""
+    user, shop = await get_current_shop(credentials=credentials, db=db)
+    payload = decode_jwt(credentials.credentials)
+    role = payload.get("role", "staff")
+    if role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Treasury access is restricted to shop owners.",
+        )
+    return user, shop

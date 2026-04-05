@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { vaultApi } from '@/api';
+import { treasuryApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-import { ScreenHeader, SafeScrollView, HeroCard, Badge, LoadingState, ErrorState } from '@/components';
+import { ScreenHeader, SafeScrollView, HeroCard, Badge, LoadingState, ErrorState, RoleGate } from '@/components';
 
 interface Payout {
   id: string;
@@ -43,13 +43,13 @@ function statusDot(status: Payout['status']): string {
 export default function PayoutHistoryScreen() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['payouts'],
-    queryFn: () => vaultApi.payouts(50).then(r => r.data),
+    queryFn: () => treasuryApi.payouts(50).then(r => r.data),
   });
 
   if (isLoading) return <LoadingState message="Loading payout history…" />;
   if (error) return <ErrorState message="Could not load payouts" />;
 
-  const payouts: Payout[] = data?.payouts ?? MOCK_PAYOUTS;
+  const payouts: Payout[] = (data?.payouts?.length > 0 ? data.payouts : null) ?? MOCK_PAYOUTS;
   const totalPaid = payouts
     .filter(p => p.status === 'success')
     .reduce((s, p) => s + p.amount_pesawas, 0);
@@ -57,6 +57,7 @@ export default function PayoutHistoryScreen() {
   return (
     <View style={styles.root}>
       <ScreenHeader title="Payout History" />
+      <RoleGate allowed={['owner']} feature="Payout History" description="Only the shop owner can view payout history.">
       <SafeScrollView>
         {/* Hero */}
         <HeroCard
@@ -106,6 +107,7 @@ export default function PayoutHistoryScreen() {
       <Pressable style={styles.fab} onPress={() => Alert.alert('Download', 'Payout report download coming soon')}>
         <Text style={styles.fabIcon}>⬇</Text>
       </Pressable>
+      </RoleGate>
     </View>
   );
 }

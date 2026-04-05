@@ -7,8 +7,11 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+_bearer = HTTPBearer()
 
 from app.core.database import get_db
 from app.core.security import create_jwt, generate_otp, hash_otp, verify_otp_hash
@@ -116,8 +119,24 @@ async def verify_otp_endpoint(body: OtpVerifyRequest, db: AsyncSession = Depends
 
     await db.commit()
 
-    token, expires_at = create_jwt(user.id, shop_id, phone_e164)
+    token, expires_at = create_jwt(user.id, shop_id, phone_e164, role=member.role)
     return OtpVerifyResponse(
         jwt=token,
         expires_at=expires_at.isoformat(),
     )
+
+
+@router.get("/me")
+async def me(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+):
+    """Returns current user identity + role — used by mobile to hydrate auth store."""
+    from app.core.security import decode_jwt
+    payload = decode_jwt(credentials.credentials)
+    user_id = payload.get("sub")
+    shop_id = payload.get("shop_id")
+    role    = payload.get("role", "staff")
+    phone   = payload.get("phone")
+    if not user_id or not shop_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    return {"user_id": user_id, "shop_id": shop_id, "role": role, "phone": phone}

@@ -8,10 +8,10 @@ import {
   ScreenHeader,
   SafeScrollView,
   HeroCard,
-  MetricTile,
   LoadingState,
   ErrorState,
 } from '@/components';
+import { fmtDateShort } from '@/utils/date';
 
 export default function TaxScreen() {
   const { data, isLoading, error } = useQuery({
@@ -27,13 +27,14 @@ export default function TaxScreen() {
   const inputVat: number = d.input_vat_pesawas ?? 210000;
   const netVat: number = d.net_vat_pesawas ?? 240000;
 
-  const invoices: Array<{ vendor: string; date: string; amount: number; vat: number }> =
-    d.recent_invoices ?? [
-      { vendor: 'Accra Central Wholesale Ltd', date: '28 Mar 2026', amount: 124000, vat: 18600 },
-      { vendor: 'Gold Coast Supplies Co.', date: '27 Mar 2026', amount: 87500, vat: 13125 },
-      { vendor: 'Tema Port Logistics', date: '25 Mar 2026', amount: 310000, vat: 46500 },
-      { vendor: 'Kumasi Fresh Market', date: '24 Mar 2026', amount: 55000, vat: 8250 },
-    ];
+  // Backend returns vendor_name / total_amount_pesawas / vat_amount_pesawas / invoice_date
+  const rawInvoices: any[] = d.recent_invoices ?? [];
+  const invoices = rawInvoices.map(inv => ({
+    vendor: inv.vendor_name ?? inv.vendor ?? '—',
+    date:   inv.invoice_date ? fmtDateShort(inv.invoice_date) : (inv.date ?? ''),
+    amount: inv.total_amount_pesawas ?? inv.amount ?? 0,
+    vat:    inv.vat_amount_pesawas   ?? inv.vat   ?? 0,
+  }));
 
   return (
     <View style={styles.root}>

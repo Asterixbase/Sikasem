@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { screenPad } from '@/utils/layout';
 
 interface Props {
   label: string;
@@ -14,7 +15,7 @@ interface Props {
 
 export function HeroCard({ label, amount, value, subtitle, badge, style, children }: Props) {
   const display = amount !== undefined
-    ? `GHS ${(amount / 100).toLocaleString('en-GH', { minimumFractionDigits: 2 })}`
+    ? `GHS ${(amount / 100).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`
     : (value ?? '');
 
   return (
@@ -31,10 +32,10 @@ export function HeroCard({ label, amount, value, subtitle, badge, style, childre
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.g, borderRadius: Radius.xl,
-    padding: Spacing.s6, margin: Spacing.s4, ...Shadows.card,
+    padding: Spacing.s6, marginHorizontal: screenPad, marginVertical: Spacing.s4, ...Shadows.card,
   },
   label: { ...Typography.label, color: 'rgba(255,255,255,0.75)', marginBottom: 4 },
-  amount: { ...Typography.displayMD, color: Colors.w },
+  amount: { fontSize: 28, fontWeight: '700', lineHeight: 36, color: Colors.w },
   sub: { ...Typography.bodySM, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
   badge: {
     alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.15)',

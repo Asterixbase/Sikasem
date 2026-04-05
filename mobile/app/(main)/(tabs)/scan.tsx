@@ -23,7 +23,7 @@ export default function ScanScreen() {
   const handleModePress = (key: ModeKey) => {
     if (key === 'barcode') { setActiveMode('barcode'); return; }
     const params = { mode: key };
-    router.replace({ pathname: '/(main)/bulk' as any, params });
+    router.push({ pathname: '/(main)/bulk' as any, params });
   };
 
   const handleBarcode = async ({ data }: { data: string }) => {
@@ -31,14 +31,12 @@ export default function ScanScreen() {
     setScanned(true);
     try {
       await productsApi.getByBarcode(data);
+      // Product exists in our inventory — go to SKU detail
       router.push({ pathname: '/(main)/skus', params: { barcode: data } });
     } catch (e: any) {
-      if (e?.response?.status === 404) {
-        router.push({ pathname: '/(main)/scan-result', params: { barcode: data } });
-      } else {
-        Alert.alert('Error', 'Could not look up barcode');
-        setScanned(false);
-      }
+      // 404 = new product, or any other error (network, 500) = treat as new product
+      // scan-result will do its own lookup and handle both cases
+      router.push({ pathname: '/(main)/scan-result', params: { barcode: data } });
     }
   };
 

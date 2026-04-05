@@ -5,6 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/store/auth';
+import { API_BASE } from '@/api';
+
+// Keep Fly.io machine warm — ping every 4 minutes
+const _keepAlive = setInterval(() => {
+  fetch(`${API_BASE.replace('/v1', '')}/health`).catch(() => {});
+}, 4 * 60 * 1000);
 
 // ── Error boundary — shows the error instead of crashing ─────────────────────
 class ErrorBoundary extends React.Component<

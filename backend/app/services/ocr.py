@@ -280,6 +280,85 @@ async def extract_id_card(image_base64: str) -> dict:
         return {"full_name": "", "id_type": "ghana_card", "id_number": "", "dob": "", "confidence": 0.0}
 
 
+# ── Product label OCR ─────────────────────────────────────────────────────────
+
+_PRODUCT_LABEL_PROMPT = """\
+You are a product label reader for a Ghanaian retail shop inventory system.
+Examine the image carefully — it may be a product package, a shelf price tag, a sticker, or a handwritten label.
+
+Extract every field you can read and return ONLY a valid JSON object with these fields:
+
+{
+  "product_name": "Full product name including size/weight/variant (e.g. 'Indomie Instant Noodles Chicken 70g'). String or null.",
+  "brand":        "Brand name only (e.g. 'Indomie', 'Milo', 'Cowbell'). String or null.",
+  "sell_price":   "Retail selling price in GHS as a number (e.g. 1.50). Look for 'GH₵', 'GHS', 'Price', 'P:' or any visible price. Number or null.",
+  "buy_price":    null,
+  "quantity":     "If a count or pack size is visible (e.g. '12 pack', 'qty: 5') return that integer. Otherwise null.",
+  "barcode":      "If a barcode number is visible (EAN-13 or similar), return the digits as a string. Otherwise null."
+}
+
+Important rules:
+- product_name: be thorough — include the brand, product type, flavour, and weight/volume if visible.
+- sell_price: look anywhere on the label for a price. Ghanaian prices are in GHS (Ghana Cedis). Common formats: 'GH₵1.50', '1.50', 'GHS 1.50', 'P: 1.50'.
+- If you are not sure about a value, still include your best guess — a rough value is more useful than null.
+- Do NOT add commentary. Return ONLY the JSON object."""
+
+
+async def extract_product_label(image_base64: str) -> dict:
+    """Extract product details from a label/packaging image."""
+    from app.core.config import settings
+    if not settings.ANTHROPIC_API_KEY:
+        return {"product_name": None, "brand": None, "sell_price": None, "buy_price": None, "quantity": None, "barcode": None, "confidence": 0.0}
+
+    def field(value, conf=0.85):
+        if value in (None, "", 0):
+            return {"value": None, "confidence": 0.0}
+        return {"value": value, "confidence": conf}
+
+    try:
+        raw  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _PRIMARY_MODEL)
+        data = _parse_json_response(raw)
+
+        sell_p = data.get("sell_price")
+        sell_pesawas = int(round(float(sell_p) * 100)) if sell_p else None
+
+        result = {
+            "product_name": field(data.get("product_name")),
+            "brand":        field(data.get("brand")),
+            "sell_price":   field(sell_pesawas),
+            "buy_price":    field(None),
+            "quantity":     field(data.get("quantity")),
+            "barcode":      field(data.get("barcode")),
+        }
+        values = [f["value"] for f in result.values()]
+        confidence = _calc_confidence(values)
+
+        logger.info("OCR product label confidence=%.3f model=%s", confidence, _PRIMARY_MODEL)
+
+        if confidence < _FALLBACK_THRESHOLD:
+            raw2  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _FALLBACK_MODEL)
+            data2 = _parse_json_response(raw2)
+            sell_p2 = data2.get("sell_price")
+            sell_pesawas2 = int(round(float(sell_p2) * 100)) if sell_p2 else None
+            result = {
+                "product_name": field(data2.get("product_name")),
+                "brand":        field(data2.get("brand")),
+                "sell_price":   field(sell_pesawas2),
+                "buy_price":    field(None),
+                "quantity":     field(data2.get("quantity")),
+                "barcode":      field(data2.get("barcode")),
+            }
+            confidence = _calc_confidence([f["value"] for f in result.values()])
+            logger.info("Cloud Vision product label confidence=%.3f", confidence)
+
+        result["confidence"] = confidence
+        return result
+
+    except Exception as exc:
+        logger.error("OCR product label extraction failed: %s", exc)
+        return {"product_name": {"value": None, "confidence": 0.0}, "brand": {"value": None, "confidence": 0.0}, "sell_price": {"value": None, "confidence": 0.0}, "buy_price": {"value": None, "confidence": 0.0}, "quantity": {"value": None, "confidence": 0.0}, "barcode": {"value": None, "confidence": 0.0}, "confidence": 0.0}
+
+
 # ── Bulk scan OCR ──────────────────────────────────────────────────────────────
 
 _BULK_SCAN_PROMPT = """\

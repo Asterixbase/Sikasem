@@ -13,7 +13,7 @@ const QUICK_ACTIONS = [
   { icon: '🧾', label: 'Tax',    route: '/(main)/tax' },
   { icon: '💳', label: 'Credit', route: '/(main)/credit-list' },
   { icon: '📊', label: 'Reports',route: '/(main)/analytics' },
-  { icon: '🏦', label: 'Vault',  route: '/(main)/vault' },
+  { icon: '🏦', label: 'Treasury', route: '/(main)/treasury' },
 ];
 
 export default function DashScreen() {
@@ -36,11 +36,21 @@ export default function DashScreen() {
       <View style={styles.appBar}>
         <SikasemLogo size="sm" layout="row" showTagline={false} />
         <View style={styles.appBarRight}>
-          <View style={styles.avatar}>
+          <Pressable
+            onPress={() => router.push('/(main)/(tabs)/settings' as any)}
+            style={styles.cogBtn}
+            hitSlop={8}
+          >
+            <Text style={styles.cogIcon}>⚙️</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/(main)/(tabs)/settings' as any)}
+            style={styles.avatar}
+          >
             <Text style={styles.avatarText}>
               {(d.shop_name ?? 'S')[0].toUpperCase()}
             </Text>
-          </View>
+          </Pressable>
         </View>
       </View>
 
@@ -110,13 +120,13 @@ export default function DashScreen() {
               <View key={i} style={[
                 styles.alertCard,
                 a.urgency === 'critical' ? styles.alertCardRed
-                  : a.urgency === 'warning' ? styles.alertCardAmber
+                  : (a.urgency === 'warning' || a.urgency === 'high') ? styles.alertCardAmber
                   : styles.alertCardGreen,
               ]}>
                 <View style={[
                   styles.alertDot,
                   { backgroundColor: a.urgency === 'critical' ? Colors.rt
-                      : a.urgency === 'warning' ? Colors.at : Colors.g2 },
+                      : (a.urgency === 'warning' || a.urgency === 'high') ? Colors.at : Colors.g2 },
                 ]} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.alertText}>{a.message}</Text>
@@ -158,6 +168,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.gy2,
   },
   appBarRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2 },
+  cogBtn: { padding: 4 },
+  cogIcon: { fontSize: 20 },
   avatar: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: Colors.g, alignItems: 'center', justifyContent: 'center',
