@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -25,32 +25,41 @@ export default function ScanResultScreen() {
   const [ocrAttempted, setOcrAttempted] = useState(false);
   const [existingProductId, setExistingProductId] = useState<string | null>(null);
 
+  // Track whether we've already auto-launched camera-label so we don't re-launch
+  // when the screen re-mounts after router.back() from camera-label.
+  const cameraLaunchedRef = useRef(false);
+
   // On mount: if we have a barcode, check if the product already exists in the DB.
   // If it does → pre-fill all fields immediately (no OCR needed).
-  // If not    → auto-launch label camera to OCR the label.
+  // If not    → auto-launch label camera to OCR the label (only once).
   useEffect(() => {
     if (!barcode) return;
     productsApi.getByBarcode(barcode)
       .then(r => {
         const p = r.data as any;
         setName(p.name ?? '');
-        setBrand('');   // not stored on Product model separately
+        setBrand('');
         setSellPrice(p.sell_price_pesawas ? String((p.sell_price_pesawas / 100).toFixed(2)) : '');
         setBuyPrice(p.buy_price_pesawas   ? String((p.buy_price_pesawas  / 100).toFixed(2)) : '');
         setCategoryId(p.category_id ?? '');
         setExistingProductId(p.product_id ?? p.id ?? null);
-        setOcrDone(true);   // fields are pre-filled — skip OCR launch
+        setOcrDone(true);
       })
       .catch(() => {
-        // Product not in DB — launch camera for OCR
+        // Product not in DB — auto-launch camera for OCR, but only once.
+        // If cameraLaunchedRef is already true, we're returning from camera-label;
+        // useFocusEffect will populate the fields from the OCR store.
+        if (cameraLaunchedRef.current) return;
+        // Also skip if OCR result already in store (screen re-mounted after back)
+        if (useOcrLabelStore.getState().result) return;
+        cameraLaunchedRef.current = true;
         const t = setTimeout(() => router.push('/(main)/camera-label'), 400);
         return () => clearTimeout(t);
       });
   }, [barcode]);
 
   // When camera-label screen returns, populate fields from the OCR store snapshot.
-  // Read directly from Zustand getState() — no dependency on React render cycle,
-  // which avoids the race where router.back() fires before scan-result re-renders.
+  // Uses getState() directly — avoids race where router.back() fires before re-render.
   useFocusEffect(
     React.useCallback(() => {
       const snap = useOcrLabelStore.getState();
@@ -58,24 +67,27 @@ export default function ScanResultScreen() {
       if (!ocr) return;
 
       let filled = 0;
-      if (ocr.product_name?.value) { setName(String(ocr.product_name.value));   filled++; }
-      if (ocr.brand?.value)        { setBrand(String(ocr.brand.value));          filled++; }
-      if (ocr.sell_price?.value)   {
-        setSellPrice(String((Number(ocr.sell_price.value) / 100).toFixed(2)));   filled++;
+      if (ocr.product_name?.value) {
+        setName(String(ocr.product_name.value)); filled++;
       }
-      if (ocr.buy_price?.value)    {
-        setBuyPrice(String((Number(ocr.buy_price.value) / 100).toFixed(2)));     filled++;
+      if (ocr.brand?.value) {
+        setBrand(String(ocr.brand.value)); filled++;
       }
-      if (ocr.quantity?.value)     { setStock(String(ocr.quantity.value));       filled++; }
-      if (ocr.barcode?.value && !barcode) {
-        // If the OCR picked up a barcode and we don't already have one, use it
-        // (scan-result doesn't have a setter for barcode param, but we can pre-fill name at minimum)
+      if (ocr.sell_price?.value != null && Number(ocr.sell_price.value) > 0) {
+        // sell_price is stored in pesawas (backend converts GHS→pesawas before storing)
+        setSellPrice(String((Number(ocr.sell_price.value) / 100).toFixed(2))); filled++;
+      }
+      if (ocr.buy_price?.value != null && Number(ocr.buy_price.value) > 0) {
+        setBuyPrice(String((Number(ocr.buy_price.value) / 100).toFixed(2))); filled++;
+      }
+      if (ocr.quantity?.value) {
+        setStock(String(ocr.quantity.value)); filled++;
       }
 
       setOcrAttempted(true);
-      setOcrDone(filled > 0);   // only mark "done" if at least one field was extracted
+      setOcrDone(filled > 0);
       snap.clear();
-    }, [barcode])  // barcode is stable, used for the barcode fallback check above
+    }, [])  // no deps — always reads fresh from Zustand getState()
   );
 
   // Auto-suggest category when name changes

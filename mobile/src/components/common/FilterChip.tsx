@@ -1,14 +1,16 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet, ScrollView, View } from 'react-native';
+import { Pressable, Text, StyleSheet, ScrollView } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
+import { useTheme } from '@/hooks/useTheme';
 
 interface ChipProps { label: string; active: boolean; onPress: () => void }
 
 export function FilterChip({ label, active, onPress }: ChipProps) {
+  const C = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.chip, active && styles.chipActive]}
+      style={[styles.chip, active && { backgroundColor: C.g, borderColor: C.g }]}
       hitSlop={6}
     >
       <Text style={[styles.text, active && styles.textActive]}>{label}</Text>
@@ -38,7 +40,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.w, borderWidth: 1, borderColor: Colors.gy2,
     marginRight: 6,
   },
-  chipActive: { backgroundColor: Colors.g, borderColor: Colors.g },
   text: { ...Typography.badge, color: Colors.t2 },
   textActive: { color: Colors.w },
   barOuter: { flexGrow: 0, flexShrink: 0 },

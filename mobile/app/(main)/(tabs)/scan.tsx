@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { productsApi } from '@/api';
 import { Colors, Typography } from '@/constants';
+import { useTheme } from '@/hooks/useTheme';
 
 const MODES = [
   { key: 'barcode', label: 'BARCODE' },
@@ -14,6 +15,7 @@ const MODES = [
 type ModeKey = typeof MODES[number]['key'];
 
 export default function ScanScreen() {
+  const C = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [activeMode, setActiveMode] = useState<ModeKey>('barcode');
@@ -57,12 +59,12 @@ export default function ScanScreen() {
         <View style={styles.overlay}>
           <View style={styles.frame}>
             {/* Corner brackets */}
-            <View style={[styles.corner, styles.tl]} />
-            <View style={[styles.corner, styles.tr]} />
-            <View style={[styles.corner, styles.bl]} />
-            <View style={[styles.corner, styles.br]} />
+            <View style={[styles.corner, styles.tl, { borderColor: C.scanPrimary }]} />
+            <View style={[styles.corner, styles.tr, { borderColor: C.scanPrimary }]} />
+            <View style={[styles.corner, styles.bl, { borderColor: C.scanPrimary }]} />
+            <View style={[styles.corner, styles.br, { borderColor: C.scanPrimary }]} />
           </View>
-          <View style={styles.pill}>
+          <View style={[styles.pill, { backgroundColor: C.scanPrimary }]}>
             <View style={styles.dot} />
             <Text style={styles.pillText}>ALIGN BARCODE INSIDE FRAME</Text>
           </View>
@@ -78,7 +80,7 @@ export default function ScanScreen() {
         {MODES.map(m => (
           <Pressable
             key={m.key}
-            style={[styles.modeTab, activeMode === m.key && styles.modeTabActive]}
+            style={[styles.modeTab, activeMode === m.key && { backgroundColor: C.scanPrimary, borderColor: C.scanPrimary }]}
             onPress={() => handleModePress(m.key)}
           >
             <Text style={[styles.modeTabText, activeMode === m.key && styles.modeTabTextActive]}>
@@ -100,22 +102,21 @@ export default function ScanScreen() {
   );
 }
 
-const C = Colors.scanPrimary;
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gy },
   msg: { ...Typography.bodyLG, color: Colors.t },
-  btn: { marginTop: 16, backgroundColor: C, borderRadius: 8, padding: 12 },
+  btn: { marginTop: 16, backgroundColor: Colors.scanPrimary, borderRadius: 8, padding: 12 },
   btnText: { color: Colors.w, fontWeight: '700' },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   frame: { width: 220, height: 160, position: 'relative' },
-  corner: { position: 'absolute', width: 26, height: 26, borderColor: C, borderWidth: 3 },
+  corner: { position: 'absolute', width: 26, height: 26, borderColor: Colors.scanPrimary, borderWidth: 3 },
   tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
   tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
   br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
   pill: {
     marginTop: 24, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: C, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, gap: 8,
+    backgroundColor: Colors.scanPrimary, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, gap: 8,
   },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.w },
   pillText: { ...Typography.badge, color: Colors.w },
@@ -140,8 +141,8 @@ const styles = StyleSheet.create({
     borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
   modeTabActive: {
-    backgroundColor: C,
-    borderColor: C,
+    backgroundColor: Colors.scanPrimary,
+    borderColor: Colors.scanPrimary,
   },
   modeTabText: {
     fontSize: 11, fontWeight: '700', letterSpacing: 0.5,

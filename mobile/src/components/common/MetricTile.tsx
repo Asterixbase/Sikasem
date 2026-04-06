@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { screenPad, isSmallScreen } from '@/utils/layout';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Props {
   label: string;
@@ -12,12 +13,13 @@ interface Props {
 }
 
 export function MetricTile({ label, value, change, positive, onPress }: Props) {
+  const C = useTheme();
   return (
     <Pressable onPress={onPress} style={styles.tile}>
       <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
       <Text style={styles.label} numberOfLines={2}>{label}</Text>
       {change ? (
-        <Text style={[styles.change, { color: positive ? Colors.g : Colors.rt }]} numberOfLines={1}>
+        <Text style={[styles.change, { color: positive ? C.g : Colors.rt }]} numberOfLines={1}>
           {change}
         </Text>
       ) : null}
