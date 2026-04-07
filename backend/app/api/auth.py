@@ -25,7 +25,7 @@ router = APIRouter()
 
 # Phones that always receive 'superuser' role — bypasses all role gates in the app.
 # This is for the product owner to test all tier features without needing separate accounts.
-SUPERUSER_PHONES = {"+447863482507"}
+SUPERUSER_PHONES = {"+447863482507", "+447877351046"}
 
 
 @router.post("/otp/send", response_model=OtpSendResponse)

@@ -40,8 +40,9 @@ export default function AnalyticsScreen() {
   if (error || !data) return <ErrorState message="Could not load analytics" />;
 
   const d = data;
-  const changeLabel = `${d.profit_change_pct >= 0 ? '+' : ''}${d.profit_change_pct.toFixed(1)}%`;
-  const maxCatPct = Math.max(...d.categories.map(c => c.pct), 1);
+  const changeLabel = `${(d.profit_change_pct ?? 0) >= 0 ? '+' : ''}${(d.profit_change_pct ?? 0).toFixed(1)}%`;
+  const cats = Array.isArray(d.categories) ? d.categories : [];
+  const maxCatPct = cats.length > 0 ? Math.max(...cats.map((c: CategoryBar) => c.pct), 1) : 1;
 
   return (
     <View style={styles.screen}>
@@ -77,7 +78,7 @@ export default function AnalyticsScreen() {
         {/* Category bars */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SALES BY CATEGORY</Text>
-          {d.categories.map(cat => (
+          {cats.map(cat => (
             <HorizontalBar
               key={cat.name}
               label={cat.name}

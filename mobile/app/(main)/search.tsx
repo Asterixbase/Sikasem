@@ -39,18 +39,26 @@ const STATUS_VARIANT: Record<string, 'green' | 'amber' | 'red' | 'blue'> = {
 export default function SearchScreen() {
   const theme = useThemePalette();
   const [q, setQ] = useState('');
+  const [debouncedQ, setDebouncedQ] = useState('');
   const [type, setType] = useState('all');
   const inputRef = useRef<TextInput>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleQChange = (text: string) => {
+    setQ(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQ(text), 300);
+  };
 
   const { data, isFetching } = useQuery({
-    queryKey: ['search', q, type],
-    queryFn: () => salesApi.search({ q, type }).then(r => r.data),
-    enabled: q.trim().length > 0,
+    queryKey: ['search', debouncedQ, type],
+    queryFn: () => salesApi.search({ q: debouncedQ, type }).then(r => r.data),
+    enabled: debouncedQ.trim().length > 0,
     staleTime: 30_000,
   });
 
   const results = data?.results ?? [];
-  const hasQuery = q.trim().length > 0;
+  const hasQuery = debouncedQ.trim().length > 0;
   const noResults = hasQuery && !isFetching && results.length === 0;
 
   return (
@@ -66,14 +74,14 @@ export default function SearchScreen() {
             style={styles.searchInput}
             placeholder="Search by product, reference…"
             value={q}
-            onChangeText={setQ}
+            onChangeText={handleQChange}
             placeholderTextColor={Colors.t3}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
           />
           {q.length > 0 && (
-            <Pressable onPress={() => setQ('')} hitSlop={8}>
+            <Pressable onPress={() => { setQ(''); setDebouncedQ(''); }} hitSlop={8}>
               <Text style={styles.clearIcon}>✕</Text>
             </Pressable>
           )}
@@ -120,7 +128,7 @@ export default function SearchScreen() {
               {noResults ? (
                 <>
                   <Text style={styles.emptyIcon}>🔍</Text>
-                  <Text style={styles.emptyTitle}>No results for "{q}"</Text>
+                  <Text style={styles.emptyTitle}>No results for "{debouncedQ}"</Text>
                   <Text style={styles.emptyHint}>
                     Try searching by product name, sale reference, or customer name.
                   </Text>

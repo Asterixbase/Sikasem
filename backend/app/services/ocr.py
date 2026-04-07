@@ -291,17 +291,16 @@ Extract every field you can read and return ONLY a valid JSON object with these 
 {
   "product_name": "Full product name including size/weight/variant (e.g. 'Indomie Instant Noodles Chicken 70g'). String or null.",
   "brand":        "Brand name only (e.g. 'Indomie', 'Milo', 'Cowbell'). String or null.",
-  "sell_price":   "Retail selling price in GHS as a number (e.g. 1.50). Look for 'GH₵', 'GHS', 'Price', 'P:' or any visible price. Number or null.",
-  "buy_price":    null,
-  "quantity":     "If a count or pack size is visible (e.g. '12 pack', 'qty: 5') return that integer. Otherwise null.",
-  "barcode":      "If a barcode number is visible (EAN-13 or similar), return the digits as a string. Otherwise null."
+  "sell_price":   "Retail selling price in GHS as a number (e.g. 7.00). Look for 'GH₵', 'GHS', 'Price:', 'P:', 'Retail:', 'MRP' or any visible price tag. Number or null.",
+  "quantity":     "If a count or pack size is visible (e.g. '12 pack', 'qty: 5', '48 units') return that integer. Otherwise null.",
+  "barcode":      "If a barcode number is visible (EAN-13 or similar digits), return as a string. Otherwise null."
 }
 
-Important rules:
-- product_name: be thorough — include the brand, product type, flavour, and weight/volume if visible.
-- sell_price: look anywhere on the label for a price. Ghanaian prices are in GHS (Ghana Cedis). Common formats: 'GH₵1.50', '1.50', 'GHS 1.50', 'P: 1.50'.
-- If you are not sure about a value, still include your best guess — a rough value is more useful than null.
-- Do NOT add commentary. Return ONLY the JSON object."""
+Rules:
+- product_name: include brand + type + flavour + weight/volume if all visible.
+- sell_price: search the entire image for ANY price. Ghanaian formats: 'GH₵7.00', 'GHS 7.00', '7.00', 'P: 7'. If only a buy/cost price is visible, return that as sell_price.
+- Provide your best guess for all fields — a rough value beats null.
+- Return ONLY the JSON object, no markdown, no explanation."""
 
 
 async def extract_product_label(image_base64: str) -> dict:
@@ -315,10 +314,10 @@ async def extract_product_label(image_base64: str) -> dict:
             return {"value": None, "confidence": 0.0}
         return {"value": value, "confidence": conf}
 
-    try:
-        raw  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _PRIMARY_MODEL)
-        data = _parse_json_response(raw)
-
+    def _build_label_result(data: dict) -> tuple[dict, float]:
+        """Parse Claude JSON into field dict. Confidence scored only on the 3 key fields
+        (product_name, brand, sell_price) — quantity/barcode are nice-to-have.
+        buy_price is never on a retail label so it is not requested or scored."""
         sell_p = data.get("sell_price")
         sell_pesawas = int(round(float(sell_p) * 100)) if sell_p else None
 
@@ -326,29 +325,31 @@ async def extract_product_label(image_base64: str) -> dict:
             "product_name": field(data.get("product_name")),
             "brand":        field(data.get("brand")),
             "sell_price":   field(sell_pesawas),
-            "buy_price":    field(None),
+            "buy_price":    field(None),          # never on a label; kept for schema compat
             "quantity":     field(data.get("quantity")),
             "barcode":      field(data.get("barcode")),
         }
-        values = [f["value"] for f in result.values()]
-        confidence = _calc_confidence(values)
+        # Score only the 3 key fields; buy_price is intentionally excluded
+        key_values = [
+            result["product_name"]["value"],
+            result["brand"]["value"],
+            result["sell_price"]["value"],
+        ]
+        confidence = _calc_confidence(key_values)
+        return result, confidence
+
+    try:
+        raw  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _PRIMARY_MODEL)
+        data = _parse_json_response(raw)
+        result, confidence = _build_label_result(data)
 
         logger.info("OCR product label confidence=%.3f model=%s", confidence, _PRIMARY_MODEL)
 
         if confidence < _FALLBACK_THRESHOLD:
+            logger.info("Low conf — Cloud Vision called (model=%s)", _FALLBACK_MODEL)
             raw2  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _FALLBACK_MODEL)
             data2 = _parse_json_response(raw2)
-            sell_p2 = data2.get("sell_price")
-            sell_pesawas2 = int(round(float(sell_p2) * 100)) if sell_p2 else None
-            result = {
-                "product_name": field(data2.get("product_name")),
-                "brand":        field(data2.get("brand")),
-                "sell_price":   field(sell_pesawas2),
-                "buy_price":    field(None),
-                "quantity":     field(data2.get("quantity")),
-                "barcode":      field(data2.get("barcode")),
-            }
-            confidence = _calc_confidence([f["value"] for f in result.values()])
+            result, confidence = _build_label_result(data2)
             logger.info("Cloud Vision product label confidence=%.3f", confidence)
 
         result["confidence"] = confidence
@@ -356,7 +357,15 @@ async def extract_product_label(image_base64: str) -> dict:
 
     except Exception as exc:
         logger.error("OCR product label extraction failed: %s", exc)
-        return {"product_name": {"value": None, "confidence": 0.0}, "brand": {"value": None, "confidence": 0.0}, "sell_price": {"value": None, "confidence": 0.0}, "buy_price": {"value": None, "confidence": 0.0}, "quantity": {"value": None, "confidence": 0.0}, "barcode": {"value": None, "confidence": 0.0}, "confidence": 0.0}
+        return {
+            "product_name": {"value": None, "confidence": 0.0},
+            "brand":        {"value": None, "confidence": 0.0},
+            "sell_price":   {"value": None, "confidence": 0.0},
+            "buy_price":    {"value": None, "confidence": 0.0},
+            "quantity":     {"value": None, "confidence": 0.0},
+            "barcode":      {"value": None, "confidence": 0.0},
+            "confidence":   0.0,
+        }
 
 
 # ── Bulk scan OCR ──────────────────────────────────────────────────────────────
