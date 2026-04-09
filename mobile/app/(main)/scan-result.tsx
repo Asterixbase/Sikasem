@@ -7,6 +7,7 @@ import { productsApi } from '@/api';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
 import { ScreenHeader, FormInput, Button, Badge } from '@/components';
 import { useOcrLabelStore } from '@/store/ocrLabel';
+import { useCategoryPickStore } from '@/store/categoryPick';
 
 export default function ScanResultScreen() {
   const { barcode } = useLocalSearchParams<{ barcode: string }>();
@@ -19,7 +20,7 @@ export default function ScanResultScreen() {
   const [stock, setStock]           = useState('1');
   const [categoryId, setCategoryId] = useState('');
 
-  const [suggestion, setSuggestion]     = useState<{ name: string; confidence: number } | null>(null);
+  const [suggestion, setSuggestion]     = useState<{ name: string; confidence: number; category_id?: string } | null>(null);
   const [saving, setSaving]             = useState(false);
   const [ocrDone, setOcrDone]           = useState(false);
   const [ocrAttempted, setOcrAttempted] = useState(false);
@@ -70,6 +71,16 @@ export default function ScanResultScreen() {
   // Reads directly from Zustand getState() — no stale closure risk.
   useFocusEffect(
     React.useCallback(() => {
+      // Pick up category selection from cat.tsx
+      const catSnap = useCategoryPickStore.getState();
+      if (catSnap.categoryId) {
+        setCategoryId(catSnap.categoryId);
+        if (catSnap.categoryName) {
+          setSuggestion({ name: catSnap.categoryName, confidence: 1, category_id: catSnap.categoryId });
+        }
+        catSnap.clear();
+      }
+
       const snap = useOcrLabelStore.getState();
       const ocr  = snap.result;
       if (!ocr) return;

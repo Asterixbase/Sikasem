@@ -539,23 +539,373 @@ async def analytics(
 ):
     _, shop = auth
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    result = await db.execute(
-        select(Sale).where(Sale.shop_id == shop.id, Sale.created_at >= cutoff)
+    prev_cutoff = cutoff - timedelta(days=30)
+
+    # Current period + previous period sales for trend
+    curr_r, prev_r, items_r = await asyncio.gather(
+        db.execute(
+            select(Sale).where(Sale.shop_id == shop.id, Sale.created_at >= cutoff)
+        ),
+        db.execute(
+            select(Sale).where(
+                Sale.shop_id == shop.id,
+                Sale.created_at >= prev_cutoff,
+                Sale.created_at < cutoff,
+            )
+        ),
+        db.execute(
+            select(SaleItem, Product.buy_price_pesawas.label("buy_p"), Category.name.label("cat_name"))
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .join(Product, SaleItem.product_id == Product.id)
+            .outerjoin(Category, Product.category_id == Category.id)
+            .where(Sale.shop_id == shop.id, Sale.created_at >= cutoff)
+        ),
     )
-    sales = result.scalars().all()
-    total = sum(s.total_pesawas for s in sales)
-    count = len(sales)
+    sales      = curr_r.scalars().all()
+    prev_sales = prev_r.scalars().all()
+    item_rows  = items_r.all()
+
+    total      = sum(s.total_pesawas for s in sales)
+    prev_total = sum(s.total_pesawas for s in prev_sales)
+    count      = len(sales)
+
+    # Profit change vs previous period
+    profit_change_pct = 0.0
+    if prev_total > 0:
+        profit_change_pct = round((total - prev_total) / prev_total * 100, 1)
+
+    # Gross profit and category breakdown
+    gross_profit = 0
+    cat_revenue: dict[str, int] = {}
+    for row in item_rows:
+        item = row[0]
+        buy_p = row.buy_p or 0
+        line_rev = item.unit_price_pesawas * item.quantity
+        gross_profit += (item.unit_price_pesawas - buy_p) * item.quantity
+        cat = row.cat_name or "Other"
+        cat_revenue[cat] = cat_revenue.get(cat, 0) + line_rev
+
+    # Category breakdown as percentages
+    categories = []
+    if total > 0:
+        for cat, rev in sorted(cat_revenue.items(), key=lambda x: x[1], reverse=True)[:6]:
+            categories.append({"name": cat, "pct": round(rev / total * 100, 1)})
+
+    # Low-stock / overstock counts
+    prods_r, vel_r = await asyncio.gather(
+        db.execute(select(Product).where(Product.shop_id == shop.id)),
+        db.execute(
+            select(SaleItem.product_id, func.sum(SaleItem.quantity).label("qty"))
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .where(Sale.shop_id == shop.id, Sale.created_at >= cutoff)
+            .group_by(SaleItem.product_id)
+        ),
+    )
+    products = prods_r.scalars().all()
+    vel_map  = {str(r.product_id): round(r.qty / 30, 2) for r in vel_r.all()}
+
+    restock_count   = 0
+    overstock_count = 0
+    for p in products:
+        velocity  = vel_map.get(str(p.id), 0.0)
+        days_left = (p.current_stock / velocity) if velocity > 0 else 999
+        if p.current_stock <= 5 or days_left <= 3:
+            restock_count += 1
+        elif velocity > 0 and days_left > 90:
+            overstock_count += 1
+
+    insight_text = "Record more sales to unlock insights."
+    if count > 0:
+        if profit_change_pct > 0:
+            insight_text = f"Revenue is up {profit_change_pct:.0f}% vs last month. Top category: {categories[0]['name'] if categories else 'N/A'}."
+        elif profit_change_pct < 0:
+            insight_text = f"Revenue dipped {abs(profit_change_pct):.0f}% vs last month. Consider promotions on slow-moving stock."
+        else:
+            insight_text = f"{count} transactions this period. Keep scanning products to improve category analytics."
 
     return {
-        "net_profit_pesawas": 0,
-        "trend_pct": 0.0,
+        "net_profit_pesawas": max(gross_profit, 0),
+        "profit_change_pct": profit_change_pct,
         "total_revenue_pesawas": total,
-        "avg_transaction_pesawas": total // count if count else 0,
-        "daily_velocity": round(count / 30, 1),
-        "growth_margin_pct": 0.0,
-        "categories": [],
-        "ai_insight": "Record more sales to unlock insights.",
-        "inventory_flow": {"restock_required": 0, "overstocked": 0},
+        "gross_profit_pesawas": max(gross_profit, 0),
+        "transactions": count,
+        "avg_basket_pesawas": total // count if count else 0,
+        "categories": categories,
+        "insight_text": insight_text,
+        "restock_count": restock_count,
+        "overstock_count": overstock_count,
+    }
+
+
+@router.get("/daily-reconciliation")
+async def daily_reconciliation(
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Compares today's SaleItems (what was rung through the till) against
+    StockMovements of type 'sale' (what was actually decremented from stock).
+    Flags any product where the two numbers disagree.
+    """
+    _, shop = auth
+    from app.models.inventory import StockMovement
+
+    today       = date.today()
+    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    today_end   = today_start + timedelta(days=1)
+
+    sale_items_r, movements_r, products_r = await asyncio.gather(
+        # Units sold per product today (from the POS till)
+        db.execute(
+            select(
+                SaleItem.product_id,
+                func.sum(SaleItem.quantity).label("units_sold"),
+            )
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .where(
+                Sale.shop_id == shop.id,
+                Sale.created_at >= today_start,
+                Sale.created_at < today_end,
+            )
+            .group_by(SaleItem.product_id)
+        ),
+        # Stock decrements logged today (type='sale' from inventory module)
+        db.execute(
+            select(
+                StockMovement.product_id,
+                func.sum(StockMovement.quantity).label("moved_qty"),
+            )
+            .where(
+                StockMovement.shop_id == shop.id,
+                StockMovement.movement_type == "sale",
+                StockMovement.created_at >= today_start,
+                StockMovement.created_at < today_end,
+            )
+            .group_by(StockMovement.product_id)
+        ),
+        db.execute(
+            select(Product.id, Product.name, Product.emoji, Product.current_stock)
+            .where(Product.shop_id == shop.id)
+        ),
+    )
+
+    sold_map    = {str(r.product_id): int(r.units_sold) for r in sale_items_r.all()}
+    moved_map   = {str(r.product_id): int(r.moved_qty)  for r in movements_r.all()}
+    product_map = {str(r.id): {"name": r.name, "emoji": r.emoji or "📦", "current_stock": r.current_stock}
+                   for r in products_r.all()}
+
+    all_product_ids = set(sold_map) | set(moved_map)
+    items = []
+    total_sold  = 0
+    total_moved = 0
+    discrepancy_count = 0
+
+    for pid in sorted(all_product_ids):
+        units_sold = sold_map.get(pid, 0)
+        moved_qty  = moved_map.get(pid, 0)
+        discrepancy = units_sold - moved_qty
+        p = product_map.get(pid, {"name": "Unknown", "emoji": "📦", "current_stock": 0})
+
+        total_sold  += units_sold
+        total_moved += moved_qty
+        if discrepancy != 0:
+            discrepancy_count += 1
+
+        items.append({
+            "product_id":    pid,
+            "name":          p["name"],
+            "emoji":         p["emoji"],
+            "current_stock": p["current_stock"],
+            "units_sold":    units_sold,
+            "stock_moved":   moved_qty,
+            "discrepancy":   discrepancy,
+            "flag":          discrepancy != 0,
+        })
+
+    # Sort flagged items first
+    items.sort(key=lambda x: (not x["flag"], x["name"]))
+
+    return {
+        "date":    today.isoformat(),
+        "items":   items,
+        "summary": {
+            "total_sold":         total_sold,
+            "total_stock_moved":  total_moved,
+            "total_discrepancy":  total_sold - total_moved,
+            "discrepancy_count":  discrepancy_count,
+        },
+        "status": "discrepancy_found" if discrepancy_count > 0 else "balanced",
+    }
+
+
+@router.get("/morning-stock")
+async def morning_stock(
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Morning stock check — returns all products grouped by stock urgency.
+    Designed to be viewed at 06:00 as a daily opening checklist.
+    """
+    _, shop = auth
+    velocity_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+
+    prods_r, vel_r = await asyncio.gather(
+        db.execute(
+            select(Product, Category.name.label("cat_name"))
+            .outerjoin(Category, Product.category_id == Category.id)
+            .where(Product.shop_id == shop.id)
+            .order_by(Product.name)
+        ),
+        db.execute(
+            select(SaleItem.product_id, func.sum(SaleItem.quantity).label("qty"))
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .where(Sale.shop_id == shop.id, Sale.created_at >= velocity_cutoff)
+            .group_by(SaleItem.product_id)
+        ),
+    )
+    rows    = prods_r.all()
+    vel_map = {str(r.product_id): round(r.qty / 30, 2) for r in vel_r.all()}
+
+    critical, low, healthy = [], [], []
+
+    for row in rows:
+        p   = row[0]
+        cat = row.cat_name or "Uncategorised"
+        vel = vel_map.get(str(p.id), 0.0)
+        days_left = round(p.current_stock / vel, 1) if vel > 0 else 999
+
+        item = {
+            "product_id":    str(p.id),
+            "name":          p.name,
+            "emoji":         p.emoji or "📦",
+            "category":      cat,
+            "current_stock": p.current_stock,
+            "daily_velocity": vel,
+            "days_remaining": days_left,
+            "reorder_qty":   max(int(vel * 14), 10) if vel > 0 else 10,
+        }
+
+        if p.current_stock == 0 or days_left <= 2:
+            critical.append(item)
+        elif p.current_stock <= 5 or days_left <= 7:
+            low.append(item)
+        else:
+            healthy.append(item)
+
+    return {
+        "date":           date.today().isoformat(),
+        "generated_at":   datetime.now(timezone.utc).isoformat(),
+        "critical_count": len(critical),
+        "low_count":      len(low),
+        "healthy_count":  len(healthy),
+        "total_skus":     len(rows),
+        "critical":       critical,
+        "low":            low,
+        "healthy":        healthy,
+    }
+
+
+@router.get("/eod-summary")
+async def eod_summary(
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    End-of-day summary — today's sales performance, payment breakdown,
+    stock movements, and a quick reconciliation flag.
+    Designed to be viewed at 18:00 as a daily closing report.
+    """
+    from app.models.inventory import StockMovement
+
+    _, shop = auth
+    today       = date.today()
+    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    today_end   = today_start + timedelta(days=1)
+
+    sales_r, items_r, movements_r = await asyncio.gather(
+        db.execute(
+            select(Sale).where(Sale.shop_id == shop.id, Sale.created_at >= today_start, Sale.created_at < today_end)
+        ),
+        db.execute(
+            select(
+                SaleItem.product_id,
+                func.sum(SaleItem.quantity).label("qty_sold"),
+                func.sum(SaleItem.quantity * SaleItem.unit_price_pesawas).label("rev"),
+                Product.name.label("product_name"),
+                Product.emoji,
+                Product.buy_price_pesawas,
+            )
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .join(Product, SaleItem.product_id == Product.id)
+            .where(Sale.shop_id == shop.id, Sale.created_at >= today_start, Sale.created_at < today_end)
+            .group_by(SaleItem.product_id, Product.name, Product.emoji, Product.buy_price_pesawas)
+            .order_by(func.sum(SaleItem.quantity * SaleItem.unit_price_pesawas).desc())
+        ),
+        db.execute(
+            select(
+                StockMovement.movement_type,
+                func.sum(StockMovement.quantity).label("qty"),
+            )
+            .where(
+                StockMovement.shop_id == shop.id,
+                StockMovement.created_at >= today_start,
+                StockMovement.created_at < today_end,
+            )
+            .group_by(StockMovement.movement_type)
+        ),
+    )
+    sales     = sales_r.scalars().all()
+    item_rows = items_r.all()
+    mov_rows  = movements_r.all()
+
+    total_revenue  = sum(s.total_pesawas for s in sales)
+    cash_total     = sum(s.total_pesawas for s in sales if s.payment_method == "cash")
+    momo_total     = sum(s.total_pesawas for s in sales if s.payment_method == "momo")
+    credit_total   = sum(s.total_pesawas for s in sales if s.payment_method == "credit")
+    tx_count       = len(sales)
+
+    gross_profit = sum(
+        (r.rev or 0) - (r.buy_price_pesawas or 0) * (r.qty_sold or 0)
+        for r in item_rows
+    )
+
+    top_products = [
+        {
+            "product_id": str(r.product_id),
+            "name":       r.product_name,
+            "emoji":      r.emoji or "📦",
+            "qty_sold":   int(r.qty_sold or 0),
+            "revenue_pesawas": int(r.rev or 0),
+        }
+        for r in item_rows[:5]
+    ]
+
+    movement_summary = {r.movement_type: int(r.qty or 0) for r in mov_rows}
+    units_sold_via_stock = movement_summary.get("sale", 0)
+    units_sold_via_pos   = sum(r.qty_sold or 0 for r in item_rows)
+    reconciliation_delta = int(units_sold_via_pos) - units_sold_via_stock
+
+    return {
+        "date":              today.isoformat(),
+        "generated_at":      datetime.now(timezone.utc).isoformat(),
+        "revenue_pesawas":   total_revenue,
+        "gross_profit_pesawas": max(gross_profit, 0),
+        "transactions":      tx_count,
+        "avg_basket_pesawas": total_revenue // tx_count if tx_count else 0,
+        "payment_breakdown": {
+            "cash":   cash_total,
+            "momo":   momo_total,
+            "credit": credit_total,
+        },
+        "stock_movements":   movement_summary,
+        "top_products":      top_products,
+        "reconciliation": {
+            "pos_units_sold":   int(units_sold_via_pos),
+            "stock_units_moved": units_sold_via_stock,
+            "delta":            reconciliation_delta,
+            "status":           "balanced" if reconciliation_delta == 0 else "discrepancy_found",
+        },
     }
 
 
@@ -565,11 +915,12 @@ async def retail_insights(
     db: AsyncSession = Depends(get_db),
 ):
     _, shop = auth
+    from sqlalchemy import cast, Date as SQLDate, extract
+
     week_start = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # Single query — GROUP BY date, no per-day round-trips
-    from sqlalchemy import cast, Date as SQLDate
-    result = await db.execute(
+    # ── Daily revenue for last 7 days ──────────────────────────────────────
+    day_result = await db.execute(
         select(
             cast(Sale.created_at, SQLDate).label("sale_date"),
             func.sum(Sale.total_pesawas).label("rev"),
@@ -577,20 +928,106 @@ async def retail_insights(
         .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
         .group_by(cast(Sale.created_at, SQLDate))
     )
-    rev_by_date = {str(row.sale_date): row.rev for row in result.all()}
+    rev_by_date = {str(row.sale_date): row.rev for row in day_result.all()}
 
-    daily = []
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    daily_data = []
     for i in range(6, -1, -1):
-        d = (date.today() - timedelta(days=i)).isoformat()
-        daily.append({"date": d, "revenue_pesawas": rev_by_date.get(d, 0)})
+        d = date.today() - timedelta(days=i)
+        rev = rev_by_date.get(d.isoformat(), 0)
+        daily_data.append({"label": day_names[d.weekday()], "value": rev})
 
-    weekly_rev = sum(d["revenue_pesawas"] for d in daily)
+    weekly_rev = sum(b["value"] for b in daily_data)
+
+    # ── Weekly revenue for last 4 weeks ────────────────────────────────────
+    four_weeks_ago = datetime.now(timezone.utc) - timedelta(days=28)
+    week_result = await db.execute(
+        select(Sale.created_at, Sale.total_pesawas)
+        .where(Sale.shop_id == shop.id, Sale.created_at >= four_weeks_ago)
+    )
+    week_buckets: dict[int, int] = {0: 0, 1: 0, 2: 0, 3: 0}
+    for row in week_result.all():
+        days_ago = (datetime.now(timezone.utc) - row.created_at).days
+        bucket = min(days_ago // 7, 3)
+        week_buckets[3 - bucket] += row.total_pesawas
+    weekly_data = [{"label": f"W-{3 - i}", "value": week_buckets[i]} for i in range(4)]
+
+    # ── Gross profit estimate ──────────────────────────────────────────────
+    profit_result = await db.execute(
+        select(
+            func.sum((SaleItem.unit_price_pesawas - func.coalesce(Product.buy_price_pesawas, 0)) * SaleItem.qty).label("profit")
+        )
+        .join(Product, SaleItem.product_id == Product.id)
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
+    )
+    weekly_profit = profit_result.scalar() or 0
+
+    # ── Peak trading times (hour-of-day buckets) ───────────────────────────
+    hour_result = await db.execute(
+        select(
+            extract("hour", Sale.created_at).label("hr"),
+            func.count(Sale.id).label("cnt"),
+        )
+        .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
+        .group_by(extract("hour", Sale.created_at))
+    )
+    hour_rows = hour_result.all()
+    total_tx = sum(r.cnt for r in hour_rows) or 1
+    time_labels = {
+        range(6, 12):  "Morning",
+        range(12, 15): "Midday",
+        range(15, 19): "Afternoon",
+        range(19, 24): "Evening",
+        range(0, 6):   "Night",
+    }
+    period_counts: dict[str, int] = {"Morning": 0, "Midday": 0, "Afternoon": 0, "Evening": 0, "Night": 0}
+    for row in hour_rows:
+        hr = int(row.hr)
+        for r, label in time_labels.items():
+            if hr in r:
+                period_counts[label] += row.cnt
+                break
+    peak_times = [
+        {"label": lbl, "pct": round((cnt / total_tx) * 100)}
+        for lbl, cnt in period_counts.items() if cnt > 0
+    ]
+
+    # ── Top performing items ───────────────────────────────────────────────
+    top_result = await db.execute(
+        select(
+            Product.id, Product.name, Product.emoji,
+            Product.buy_price_pesawas, Product.sell_price_pesawas,
+            func.sum(SaleItem.qty).label("qty_sold"),
+        )
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
+        .group_by(Product.id)
+        .order_by(func.sum(SaleItem.qty * SaleItem.unit_price_pesawas).desc())
+        .limit(5)
+    )
+    top_items = []
+    for row in top_result.all():
+        buy = row.buy_price_pesawas or 1
+        margin_pct = ((row.sell_price_pesawas - buy) / buy) * 100 if buy else 0
+        margin = "high" if margin_pct >= 30 else "fair" if margin_pct >= 10 else "low"
+        top_items.append({"name": row.name, "emoji": row.emoji or "📦", "margin": margin})
+
+    # ── Low-stock warning ──────────────────────────────────────────────────
+    low_result = await db.execute(
+        select(func.count(Product.id))
+        .where(Product.shop_id == shop.id, Product.current_stock <= 3)
+    )
+    low_count = low_result.scalar() or 0
+    stock_warning = f"{low_count} products running critically low — reorder soon" if low_count > 0 else ""
+
     return {
         "weekly_revenue_pesawas": weekly_rev,
-        "weekly_profit_pesawas": 0,
-        "trend_pct": 0.0,
-        "daily_chart": daily,
-        "peak_times": [],
-        "top_items": [],
-        "inventory_alert": None,
+        "weekly_profit_pesawas": int(weekly_profit),
+        "daily_data": daily_data,
+        "weekly_data": weekly_data,
+        "peak_times": peak_times,
+        "top_items": top_items,
+        "stock_warning": stock_warning,
     }

@@ -6,12 +6,14 @@ import { useQuery } from '@tanstack/react-query';
 import { productsApi } from '@/api';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
 import { ScreenHeader, LoadingState, Button } from '@/components';
+import { useCategoryPickStore } from '@/store/categoryPick';
 
 interface CatNode { id: string; name: string; children: CatNode[] }
 
 export default function CategoryTreeScreen() {
   const { categoryId } = useLocalSearchParams<{ categoryId: string }>();
   const [selected, setSelected] = useState<string>(categoryId ?? '');
+  const [selectedName, setSelectedName] = useState<string>('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { data, isLoading } = useQuery({
     queryKey: ['categories'],
@@ -26,7 +28,7 @@ export default function CategoryTreeScreen() {
     <View key={node.id}>
       <Pressable
         style={[styles.node, { paddingLeft: Spacing.s4 + depth * 16 }, selected === node.id && styles.nodeSelected]}
-        onPress={() => { setSelected(node.id); if (node.children.length) toggle(node.id); }}
+        onPress={() => { setSelected(node.id); setSelectedName(node.name); if (node.children.length) toggle(node.id); }}
       >
         <Text style={styles.nodeText}>
           {node.children.length ? (expanded.has(node.id) ? '▾ ' : '▸ ') : '  '}{node.name}
@@ -47,7 +49,15 @@ export default function CategoryTreeScreen() {
           renderItem={({ item }) => <>{renderNode(item)}</>}
         />
       )}
-      <Button label="Confirm Category" onPress={() => router.back()} />
+      <Button
+        label={selected ? `Confirm: ${selectedName || 'Selected'}` : 'Select a category first'}
+        onPress={() => {
+          if (selected) {
+            useCategoryPickStore.getState().setPick(selected, selectedName);
+          }
+          router.back();
+        }}
+      />
     </SafeAreaView>
   );
 }
