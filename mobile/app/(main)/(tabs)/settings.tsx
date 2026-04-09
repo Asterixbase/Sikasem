@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Switch, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Switch, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api';
@@ -34,6 +34,32 @@ export default function SettingsScreen() {
   const { isOwner, isSuperuser } = useRole();
   const [online, setOnline] = useState(true);
   const [dpaConsent, setDpaConsent] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeedDemo = () => {
+    Alert.alert(
+      'Load Demo Data',
+      'This will replace ALL existing products, sales and credit data with 14 days of realistic demo data. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Load Demo Data',
+          style: 'destructive',
+          onPress: async () => {
+            setSeeding(true);
+            try {
+              await api.post('/admin/seed-demo');
+              Alert.alert('Done', '31 products, 14 days of sales, 5 credit customers loaded. Pull to refresh any screen.');
+            } catch {
+              Alert.alert('Error', 'Could not seed demo data. Please try again.');
+            } finally {
+              setSeeding(false);
+            }
+          },
+        },
+      ]
+    );
+  };
   const { themeId, setTheme } = useThemeStore();
 
   const { data } = useQuery({
@@ -198,6 +224,25 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Demo Data — owner / superuser only */}
+        {(isOwner || isSuperuser) && (
+          <>
+            <Text style={styles.sectionHeader}>DEVELOPER TOOLS</Text>
+            <Pressable
+              style={[styles.seedBtn, seeding && { opacity: 0.6 }]}
+              onPress={handleSeedDemo}
+              disabled={seeding}
+            >
+              {seeding
+                ? <ActivityIndicator color={Colors.w} size="small" style={{ marginRight: 8 }} />
+                : <Text style={styles.seedIcon}>🌱</Text>}
+              <Text style={styles.seedText}>
+                {seeding ? 'Loading demo data…' : 'Load Demo Data'}
+              </Text>
+            </Pressable>
+          </>
+        )}
+
         {/* Help link */}
         <Pressable style={styles.helpRow} onPress={() => router.push('/(main)/help')}>
           <Text style={styles.helpText}>Help & Support</Text>
@@ -305,6 +350,15 @@ const styles = StyleSheet.create({
   },
   helpText: { ...Typography.bodyLG, color: Colors.bt },
   helpArrow: { fontSize: 18, color: Colors.t2 },
+  seedBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: Spacing.s4, marginBottom: Spacing.s3,
+    backgroundColor: Colors.g, borderRadius: Radius.lg,
+    padding: Spacing.s4, gap: Spacing.s2,
+  },
+  seedIcon: { fontSize: 18 },
+  seedText: { ...Typography.titleSM, color: Colors.w },
+
   logoutBtn: {
     marginHorizontal: Spacing.s4, marginTop: Spacing.s3,
     backgroundColor: Colors.w, borderRadius: Radius.lg,

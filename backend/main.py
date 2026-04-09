@@ -22,7 +22,7 @@ from app.services.scheduler import start_scheduler, stop_scheduler
 from app.api import (
     health, auth, products, categories, sales, transactions,
     momo, credit, inventory, reports, reorder, tax, vault,
-    ocr, shops, admin,
+    ocr, shops, admin, notifications, seed,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -136,5 +136,7 @@ v1.include_router(ocr.router,          prefix="/ocr",          tags=["ocr"])
 v1.include_router(shops.router,        prefix="/shops",        tags=["shops"])
 v1.include_router(admin.router,        prefix="/admin",        tags=["admin"])
 v1.include_router(admin.security_router, prefix="/security",  tags=["security"])
+v1.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+v1.include_router(seed.router,          prefix="/admin",        tags=["seed"])
 
 app.include_router(v1)
