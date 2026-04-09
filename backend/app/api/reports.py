@@ -955,8 +955,12 @@ async def retail_insights(
     # ── Gross profit estimate ──────────────────────────────────────────────
     profit_result = await db.execute(
         select(
-            func.sum((SaleItem.unit_price_pesawas - func.coalesce(Product.buy_price_pesawas, 0)) * SaleItem.qty).label("profit")
+            func.sum(
+                (SaleItem.unit_price_pesawas - func.coalesce(Product.buy_price_pesawas, 0))
+                * SaleItem.qty
+            ).label("profit")
         )
+        .select_from(SaleItem)
         .join(Product, SaleItem.product_id == Product.id)
         .join(Sale, SaleItem.sale_id == Sale.id)
         .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
@@ -1000,10 +1004,11 @@ async def retail_insights(
             Product.buy_price_pesawas, Product.sell_price_pesawas,
             func.sum(SaleItem.qty).label("qty_sold"),
         )
-        .join(SaleItem, SaleItem.product_id == Product.id)
+        .select_from(SaleItem)
+        .join(Product, SaleItem.product_id == Product.id)
         .join(Sale, SaleItem.sale_id == Sale.id)
         .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
-        .group_by(Product.id)
+        .group_by(Product.id, Product.name, Product.emoji, Product.buy_price_pesawas, Product.sell_price_pesawas)
         .order_by(func.sum(SaleItem.qty * SaleItem.unit_price_pesawas).desc())
         .limit(5)
     )

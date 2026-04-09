@@ -67,38 +67,79 @@ async def suggest_category(
     cats = result.scalars().all()
     tree = _build_tree(list(cats))
 
-    # Simple keyword-based suggestion
+    if not cats:
+        return CategorySuggestResponse(
+            suggestion={"category_id": "", "name": "General", "breadcrumb": "General", "confidence": 0.0},
+            alternatives=[],
+            full_tree=tree,
+        )
+
+    # Build flat name→id map for Claude to pick from
+    cat_list = "\n".join(f"- {c.name} (id: {c.id})" for c in cats)
+    product_desc = body.name
+    if body.brand:
+        product_desc = f"{body.brand} — {body.name}"
+
+    # Ask Claude to pick the best matching category
+    try:
+        from anthropic import AsyncAnthropic
+        from app.core.config import settings
+        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        resp = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"You are helping a Ghanaian shopkeeper categorise a product.\n\n"
+                    f"Product: {product_desc}\n\n"
+                    f"Available categories:\n{cat_list}\n\n"
+                    f"Reply with ONLY the category id that best fits this product. "
+                    f"If none fit well, pick the closest one. No explanation, just the id."
+                ),
+            }],
+        )
+        picked_id = resp.content[0].text.strip().strip('"').strip("'")
+        match = next((c for c in cats if c.id == picked_id), None)
+        if match:
+            return CategorySuggestResponse(
+                suggestion={
+                    "category_id": match.id,
+                    "name": match.name,
+                    "breadcrumb": match.name,
+                    "confidence": 0.90,
+                },
+                alternatives=[],
+                full_tree=tree,
+            )
+    except Exception:
+        pass  # Fall through to keyword heuristic
+
+    # Keyword fallback
     name_lower = body.name.lower()
     keywords = {
-        "drink": "Beverages", "water": "Beverages", "juice": "Beverages", "beer": "Beverages",
+        "drink": "Beverages", "water": "Beverages", "juice": "Beverages",
+        "beer": "Beverages", "malt": "Beverages", "tea": "Beverages", "coffee": "Beverages",
         "bread": "Bakery", "biscuit": "Bakery", "cake": "Bakery",
         "rice": "Grains & Staples", "flour": "Grains & Staples", "pasta": "Grains & Staples",
+        "oil": "Cooking Essentials", "tomato": "Cooking Essentials", "pepper": "Cooking Essentials",
         "soap": "Personal Care", "shampoo": "Personal Care", "cream": "Personal Care",
+        "tablet": "Pharmaceuticals", "capsule": "Pharmaceuticals", "syrup": "Pharmaceuticals",
         "phone": "Electronics", "cable": "Electronics", "charger": "Electronics",
+        "milk": "Dairy", "egg": "Dairy", "yoghurt": "Dairy",
     }
+    suggested_name = next((cat_name for kw, cat_name in keywords.items() if kw in name_lower), None)
+    matching = next((c for c in cats if suggested_name and c.name.lower() == suggested_name.lower()), None)
+    if not matching:
+        matching = cats[0]  # fallback to first category
 
-    suggested_name = "General"
-    for kw, cat_name in keywords.items():
-        if kw in name_lower:
-            suggested_name = cat_name
-            break
-
-    matching = next((c for c in cats if c.name == suggested_name), None)
-    if matching:
-        suggestion = {
+    return CategorySuggestResponse(
+        suggestion={
             "category_id": matching.id,
             "name": matching.name,
             "breadcrumb": matching.name,
-            "confidence": 0.75,
-        }
-    elif cats:
-        c = cats[0]
-        suggestion = {"category_id": c.id, "name": c.name, "breadcrumb": c.name, "confidence": 0.3}
-    else:
-        suggestion = {"category_id": "", "name": suggested_name, "breadcrumb": suggested_name, "confidence": 0.3}
-
-    return CategorySuggestResponse(
-        suggestion=suggestion,
+            "confidence": 0.50 if suggested_name else 0.30,
+        },
         alternatives=[],
         full_tree=tree,
     )

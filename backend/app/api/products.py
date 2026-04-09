@@ -72,17 +72,19 @@ async def _build_product_out(db: AsyncSession, product: Product, shop_id: str) -
     if product.buy_price_pesawas > 0:
         margin = round((product.sell_price_pesawas - product.buy_price_pesawas) / product.buy_price_pesawas * 100, 1)
 
-    history = []
-    for ph in product.price_history[:5]:
-        history.append({
-            "name": ph.supplier_name,
-            "date": ph.created_at.strftime("%Y-%m-%d"),
-            "unit_cost_pesawas": ph.unit_cost_pesawas,
-            "best": False,
-        })
+    ph_rows = (await db.execute(
+        select(PriceHistory)
+        .where(PriceHistory.product_id == product.id)
+        .order_by(PriceHistory.created_at.desc())
+        .limit(5)
+    )).scalars().all()
+    history = [
+        {"name": ph.supplier_name, "date": ph.created_at.strftime("%Y-%m-%d"),
+         "unit_cost_pesawas": ph.unit_cost_pesawas, "best": False}
+        for ph in ph_rows
+    ]
     if history:
-        cheapest = min(history, key=lambda h: h["unit_cost_pesawas"])
-        cheapest["best"] = True
+        min(history, key=lambda h: h["unit_cost_pesawas"])["best"] = True
 
     return ProductOut(
         product_id=product.id,
