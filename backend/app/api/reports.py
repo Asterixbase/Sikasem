@@ -957,7 +957,7 @@ async def retail_insights(
         select(
             func.sum(
                 (SaleItem.unit_price_pesawas - func.coalesce(Product.buy_price_pesawas, 0))
-                * SaleItem.qty
+                * SaleItem.quantity
             ).label("profit")
         )
         .select_from(SaleItem)
@@ -1002,14 +1002,14 @@ async def retail_insights(
         select(
             Product.id, Product.name, Product.emoji,
             Product.buy_price_pesawas, Product.sell_price_pesawas,
-            func.sum(SaleItem.qty).label("qty_sold"),
+            func.sum(SaleItem.quantity).label("qty_sold"),
         )
         .select_from(SaleItem)
         .join(Product, SaleItem.product_id == Product.id)
         .join(Sale, SaleItem.sale_id == Sale.id)
         .where(Sale.shop_id == shop.id, Sale.created_at >= week_start)
         .group_by(Product.id, Product.name, Product.emoji, Product.buy_price_pesawas, Product.sell_price_pesawas)
-        .order_by(func.sum(SaleItem.qty * SaleItem.unit_price_pesawas).desc())
+        .order_by(func.sum(SaleItem.quantity * SaleItem.unit_price_pesawas).desc())
         .limit(5)
     )
     top_items = []
