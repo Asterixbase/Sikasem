@@ -106,10 +106,8 @@ const styles = StyleSheet.create({
   tabIcon: { fontSize: 20, opacity: 0.6 },
   tabIconActive: { opacity: 1 },
   fab: {
-    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
+    width: FAB_SIZE, height: FAB_SIZE, borderRadius: 14,
     backgroundColor: Colors.g, justifyContent: 'center', alignItems: 'center',
-    // Centre the FAB vertically within the tab bar by pushing it up by half
-    // the difference between FAB height and tab bar content height.
     marginBottom: Platform.OS === 'ios' ? 16 : 18,
     shadowColor: Colors.g, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
