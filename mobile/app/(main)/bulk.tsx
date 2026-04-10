@@ -1,10 +1,10 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Keyboard, InteractionManager,
+  KeyboardAvoidingView, Platform, Keyboard,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { api } from '@/api';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
 import { useThemePalette } from '@/store/theme';
@@ -24,6 +24,15 @@ export default function BulkScreen() {
   const [voiceText, setVoiceText] = useState('');
   const cameraRef = useRef<CameraView>(null);
 
+  // Activate camera when screen gains focus; deactivate on blur.
+  // This is the key crash fix: when router.push navigates away, useFocusEffect
+  // fires the cleanup (setCameraActive(false)) BEFORE the screen transition starts,
+  // so the native camera session is already stopped before React unmounts anything.
+  useFocusEffect(useCallback(() => {
+    setCameraActive(true);
+    return () => setCameraActive(false);
+  }, []));
+
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, []);
@@ -31,10 +40,8 @@ export default function BulkScreen() {
   // Parse "Coca-Cola, 24" or "24 Coca-Cola" into name + qty
   const parseVoiceText = (text: string): { name: string; qty: number | null } => {
     const t = text.trim();
-    // "name, number" or "name number" at end
     const m1 = t.match(/^(.+?)[,\s]+(\d+)\s*$/);
     if (m1) return { name: m1[1].trim(), qty: parseInt(m1[2], 10) };
-    // "number name" at start
     const m2 = t.match(/^(\d+)\s+(.+)$/);
     if (m2) return { name: m2[2].trim(), qty: parseInt(m2[1], 10) };
     return { name: t, qty: null };
@@ -49,16 +56,12 @@ export default function BulkScreen() {
       product_name: name,
       confidence_scores: { product_name: 90, quantity: qty != null ? 95 : 0, unit_price: 0 },
     });
-    // 1. Stop camera hardware FIRST — eliminates native teardown crash
-    setCameraActive(false);
-    // 2. Dismiss keyboard and close modal
     Keyboard.dismiss();
     setShowVoiceModal(false);
     setVoiceText('');
-    // 3. Navigate only after all animations (modal slide-out, keyboard) complete
-    InteractionManager.runAfterInteractions(() => {
-      router.replace({ pathname: '/(main)/bulk-result', params: { data: navData } });
-    });
+    // Use router.push — keeps BulkScreen mounted so camera unmounts cleanly via
+    // useFocusEffect blur callback, not mid-transition. No native teardown crash.
+    router.push({ pathname: '/(main)/bulk-result', params: { data: navData } });
   };
 
   const handleCapture = async () => {
@@ -89,9 +92,7 @@ export default function BulkScreen() {
         router.push({ pathname: '/(main)/bulk-result', params: { data: JSON.stringify(normalised) } });
       }
     } catch (e: any) {
-      const msg = e?.response?.data?.detail ?? e?.message ?? 'Could not process image';
       setCapturing(false);
-      // show inline error
     }
   };
 
@@ -107,7 +108,9 @@ export default function BulkScreen() {
   }
 
   const MODES: Mode[] = ['SCAN MODE', 'LABEL OCR', 'BULK COUNT'];
-  const { name: parsedName, qty: parsedQty } = voiceText.trim() ? parseVoiceText(voiceText) : { name: '', qty: null };
+  const { name: parsedName, qty: parsedQty } = voiceText.trim()
+    ? parseVoiceText(voiceText)
+    : { name: '', qty: null };
 
   return (
     <View style={styles.root}>
@@ -158,7 +161,10 @@ export default function BulkScreen() {
               <Pressable
                 key={mode}
                 onPress={() => setActiveMode(mode)}
-                style={[styles.modeBtn, activeMode === mode && { backgroundColor: theme.scanPrimary, borderColor: theme.scanPrimary }]}
+                style={[
+                  styles.modeBtn,
+                  activeMode === mode && { backgroundColor: theme.scanPrimary, borderColor: theme.scanPrimary },
+                ]}
               >
                 <Text style={[styles.modeBtnText, activeMode === mode && styles.modeBtnTextActive]}>
                   {mode}
@@ -174,7 +180,6 @@ export default function BulkScreen() {
                 : <View style={styles.captureInner} />}
             </Pressable>
 
-            {/* Voice mic — tap to open dictation modal */}
             {activeMode === 'BULK COUNT' && (
               <Pressable
                 onPress={() => { setVoiceText(''); setShowVoiceModal(true); }}
@@ -187,7 +192,7 @@ export default function BulkScreen() {
         </View>
       </CameraView>
 
-      {/* Voice count modal — uses iOS keyboard dictation or manual typing */}
+      {/* Voice count modal */}
       <Modal
         transparent
         animationType="slide"
@@ -217,7 +222,6 @@ export default function BulkScreen() {
               onSubmitEditing={handleVoiceConfirm}
             />
 
-            {/* Live parse preview */}
             {parsedName ? (
               <View style={styles.parsePreview}>
                 <View style={styles.parseField}>
