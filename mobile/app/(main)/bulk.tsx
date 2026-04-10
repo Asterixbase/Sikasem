@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput,
+  KeyboardAvoidingView, Platform, Keyboard, InteractionManager,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -47,12 +48,14 @@ export default function BulkScreen() {
       product_name: name,
       confidence_scores: { product_name: 90, quantity: qty != null ? 95 : 0, unit_price: 0 },
     });
-    // Close modal first — CameraView tears down if we navigate while Modal is animating
+    // Dismiss keyboard first, then close modal, then wait for ALL animations to finish
+    // before navigating — avoids CameraView native crash during modal slide-out
+    Keyboard.dismiss();
     setShowVoiceModal(false);
     setVoiceText('');
-    setTimeout(() => {
+    InteractionManager.runAfterInteractions(() => {
       router.replace({ pathname: '/(main)/bulk-result', params: { data: navData } });
-    }, 350);
+    });
   };
 
   const handleCapture = async () => {

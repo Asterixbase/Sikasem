@@ -12,6 +12,7 @@ import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 interface OcrData {
   product_id?: string;
   detected_qty?: number;
+  strategy_label?: string;
   confidence_scores?: {
     product_name?: number;
     quantity?: number;
@@ -30,6 +31,8 @@ export default function BulkResultScreen() {
 
   const detectedQty = ocrData.detected_qty ?? 60;
   const [overrideQty, setOverrideQty] = useState(detectedQty);
+  const productName = ocrData.product_name ?? '';
+  const strategyLabel = ocrData.strategy_label ?? 'OCR DETECTION';
 
   const confidence = ocrData.confidence_scores ?? {
     product_name: 92,
@@ -43,26 +46,27 @@ export default function BulkResultScreen() {
         product_id: ocrData.product_id ?? '',
         quantity: overrideQty,
         type: 'stock_in',
-        source: 'bulk_ocr',
+        source: ocrData.product_id ? 'bulk_ocr' : 'voice_count',
       }),
     onSuccess: () => router.replace('/(main)/dash'),
     onError: (e: any) =>
       Alert.alert('Failed', e?.response?.data?.detail ?? 'Could not record movement'),
   });
 
-  const strategyLabel = `×${detectedQty} text`;
-
   return (
     <View style={styles.root}>
       <ScreenHeader
         title="Bulk Result"
-        subtitle="OCR DETECTION"
+        subtitle={strategyLabel.toUpperCase()}
         onBack={() => router.back()}
       />
 
       <SafeScrollView>
         {/* Large detected count */}
         <View style={styles.heroSection}>
+          {productName ? (
+            <Text style={styles.productName}>{productName}</Text>
+          ) : null}
           <Text style={styles.detectedCount}>{detectedQty} pcs detected</Text>
           <Badge label={strategyLabel} variant="green" />
         </View>
@@ -136,6 +140,7 @@ const styles = StyleSheet.create({
     gap: Spacing.s2,
     ...Shadows.card,
   },
+  productName: { ...Typography.label, color: Colors.t2, marginBottom: 2 },
   detectedCount: { ...Typography.displayLG, color: Colors.t },
   card: {
     margin: Spacing.s4,

@@ -40,11 +40,22 @@ export default function TaxScreen() {
 
   if (isLoading) return <LoadingState message="Loading tax data…" />;
 
+  // Dynamic period + deadline (VAT returns due last day of following month)
+  const today = new Date();
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  const periodLabel = `${MONTHS[today.getMonth()]} ${today.getFullYear()}`;
+  const dueDate = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+  const daysUntilDue = Math.max(1, Math.ceil(
+    (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  ));
+  const dueDateStr = `${dueDate.getDate()} ${MONTHS[dueDate.getMonth()]} ${dueDate.getFullYear()}`;
+
   return (
     <View style={styles.root}>
       <ScreenHeader
         title="Tax compliance"
-        subtitle="March 2026"
+        subtitle={periodLabel}
         right={
           <Pressable onPress={() => router.push('/(main)/inv-list')} hitSlop={8}>
             <Text style={styles.archiveBtn}>Archive</Text>
@@ -73,8 +84,8 @@ export default function TaxScreen() {
 
         {/* Deadline card */}
         <View style={styles.deadlineCard}>
-          <Text style={styles.deadlineTitle}>Due in 35 days</Text>
-          <Text style={styles.deadlineDate}>30 April 2026</Text>
+          <Text style={styles.deadlineTitle}>Due in {daysUntilDue} days</Text>
+          <Text style={styles.deadlineDate}>{dueDateStr}</Text>
         </View>
 
         {/* ── SUBMIT RETURN — primary CTA ── */}

@@ -184,22 +184,24 @@ export default function DashScreen() {
                 <Text style={[styles.seeAll, { color: theme.primary }]}>View all</Text>
               </Pressable>
             </View>
-            {d.recent_sales.map((s: any) => (
-              <View key={s.id} style={styles.activityRow}>
-                <View style={styles.activityIconWrap}>
-                  <Text style={styles.activityIcon}>
-                    {PAYMENT_ICONS[s.payment_method] ?? '💰'}
+            <View style={styles.activityCard}>
+              {d.recent_sales.map((s: any) => (
+                <View key={s.id} style={styles.activityRow}>
+                  <View style={styles.activityIconWrap}>
+                    <Text style={styles.activityIcon}>
+                      {PAYMENT_ICONS[s.payment_method] ?? '💰'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activityTitle}>Sale #{s.reference}</Text>
+                    <Text style={styles.activitySub}>{fmtDate(s.created_at)} · {fmtTime(s.created_at)}</Text>
+                  </View>
+                  <Text style={styles.activityAmt}>
+                    GHS {(s.amount_pesawas / 100).toFixed(2)}
                   </Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.activityTitle}>Sale #{s.reference}</Text>
-                  <Text style={styles.activitySub}>{fmtDate(s.created_at)} · {fmtTime(s.created_at)}</Text>
-                </View>
-                <Text style={styles.activityAmt}>
-                  GHS {(s.amount_pesawas / 100).toFixed(2)}
-                </Text>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         )}
 
@@ -303,9 +305,12 @@ const styles = StyleSheet.create({
   recentSection: {
     paddingHorizontal: Spacing.s4, marginBottom: Spacing.s4,
   },
+  activityCard: {
+    backgroundColor: Colors.w, borderRadius: Radius.lg,
+    overflow: 'hidden', ...Shadows.card,
+  },
   activityRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.s3,
-    backgroundColor: Colors.w,
     paddingVertical: Spacing.s3, paddingHorizontal: Spacing.s4,
     borderBottomWidth: 1, borderBottomColor: Colors.gy,
   },
