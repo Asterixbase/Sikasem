@@ -31,4 +31,18 @@ export const creditApi = {
     ),
 
   collections: () => api.get('/credit/collections'),
+
+  listCustomers: () => api.get('/credit/customers'),
+
+  customerScore: (customerId: string) =>
+    api.get<{
+      score: number; label: string; risk: string; color: string;
+      sales_count: number; paid_count: number; overdue_count: number;
+      outstanding_pesawas: number;
+    }>(`/credit/customers/${customerId}/score`),
+
+  voiceStockCount: (body: { audio_base64: string; format?: string }) =>
+    api.post<{ transcript: string; product_name: string; quantity: number | null; confidence: number }>(
+      '/ocr/voice', body
+    ),
 };

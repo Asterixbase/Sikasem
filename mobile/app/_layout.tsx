@@ -1,11 +1,14 @@
 import React, { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 
 import { useAuthStore } from '@/store/auth';
-import { API_BASE } from '@/api';
+import { useTierStore } from '@/store/tier';
+import { API_BASE, notificationsApi } from '@/api';
 
 // Keep Fly.io machine warm — ping every 4 minutes
 const _keepAlive = setInterval(() => {
@@ -58,9 +61,36 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Push token registration ───────────────────────────────────────────────────
+async function registerPushToken() {
+  if (!Device.isDevice) return; // skip simulators
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+  if (existing !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') return;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+    });
+  }
+
+  const token = (await Notifications.getExpoPushTokenAsync()).data;
+  try {
+    await notificationsApi.registerToken(token);
+  } catch (_) {
+    // non-blocking — push is best-effort
+  }
+}
+
 // ── Root navigator with auth guard ────────────────────────────────────────────
 function RootLayoutNav() {
   const { isLoading, isAuthenticated, bootstrap } = useAuthStore();
+  const hasChosen = useTierStore(s => s.hasChosen);
   const segments = useSegments();
   const router = useRouter();
 
@@ -68,22 +98,32 @@ function RootLayoutNav() {
     bootstrap();
   }, []);
 
+  // Register push token once authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      registerPushToken().catch(() => {});
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     if (isLoading) return;
 
-    const inMain = segments[0] === '(main)';
-    const inOtp  = segments[0] === 'otp-verify';
+    const inMain    = segments[0] === '(main)';
+    const inOtp     = segments[0] === 'otp-verify';
+    const inLanding = segments[0] === 'landing';
 
     if (isAuthenticated && !inMain) {
       router.replace('/(main)/dash');
-    } else if (!isAuthenticated && !inOtp) {
-      router.replace('/otp-verify');
+    } else if (!isAuthenticated && !inOtp && !inLanding) {
+      // First-time users see the landing page; returning users go straight to OTP
+      router.replace(hasChosen ? '/otp-verify' : '/landing');
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, hasChosen]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index"      options={{ headerShown: false }} />
+      <Stack.Screen name="landing"    options={{ headerShown: false }} />
       <Stack.Screen name="(main)"     options={{ headerShown: false }} />
       <Stack.Screen name="otp-verify" options={{ headerShown: false }} />
     </Stack>

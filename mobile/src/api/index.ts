@@ -9,3 +9,6 @@ export { taxApi } from './tax';
 export { inventoryApi } from './inventory';
 export { treasuryApi, vaultApi } from './vault';
 export { adminApi } from './admin';
+export { notificationsApi } from './notifications';
+export { aiApi } from './ai';
+export type { ChatMessage } from './ai';

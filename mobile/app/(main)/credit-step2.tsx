@@ -9,8 +9,10 @@ import {
   ScreenHeader, Button, FormInput, Badge,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 
 export default function CreditStep2Screen() {
+  const theme = useThemePalette();
   const params = useLocalSearchParams<{
     customer_id?: string;
     customer_name?: string;
@@ -93,7 +95,7 @@ export default function CreditStep2Screen() {
 
         {/* Customer card */}
         <View style={styles.customerCard}>
-          <View style={styles.customerCardAccent} />
+          <View style={[styles.customerCardAccent, { backgroundColor: theme.primary }]} />
           <View style={styles.customerCardBody}>
             <Text style={styles.customerName}>{params.customer_name ?? '—'}</Text>
             <Text style={styles.customerId}>
@@ -130,10 +132,10 @@ export default function CreditStep2Screen() {
               ].map(s => (
                 <Pressable
                   key={s.days}
-                  style={styles.dateShortcut}
+                  style={[styles.dateShortcut, { backgroundColor: theme.bgLight }]}
                   onPress={() => setDueDate(addDays(s.days))}
                 >
-                  <Text style={styles.dateShortcutText}>{s.label}</Text>
+                  <Text style={[styles.dateShortcutText, { color: theme.primary }]}>{s.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -150,9 +152,9 @@ export default function CreditStep2Screen() {
         </View>
 
         {/* Auto-collection banner */}
-        <View style={styles.autoBanner}>
+        <View style={[styles.autoBanner, { backgroundColor: theme.bgLight }]}>
           <Text style={styles.autoBannerIcon}>🔄</Text>
-          <Text style={styles.autoBannerText}>
+          <Text style={[styles.autoBannerText, { color: theme.primary }]}>
             MoMo auto-collection will be queued for due date
           </Text>
         </View>
@@ -201,15 +203,15 @@ const styles = StyleSheet.create({
   },
   dateShortcut: {
     paddingHorizontal: 10, paddingVertical: 5,
-    backgroundColor: Colors.gl, borderRadius: Radius.full,
+    borderRadius: Radius.full,
   },
-  dateShortcutText: { ...Typography.badge, color: Colors.g },
+  dateShortcutText: { ...Typography.badge },
   autoBanner: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.s2,
     marginHorizontal: Spacing.s4, marginBottom: Spacing.s3,
-    backgroundColor: Colors.gl, borderRadius: Radius.md,
+    borderRadius: Radius.md,
     padding: Spacing.s3,
   },
   autoBannerIcon: { fontSize: 16 },
-  autoBannerText: { ...Typography.bodySM, color: Colors.g, flex: 1 },
+  autoBannerText: { ...Typography.bodySM, flex: 1 },
 });

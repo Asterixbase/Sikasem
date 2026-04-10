@@ -7,3 +7,4 @@ from app.models.credit import CreditCustomer, CreditSale, CreditSaleItem, Credit
 from app.models.inventory import StockMovement  # noqa: F401
 from app.models.tax import TaxInvoice  # noqa: F401
 from app.models.vault import VaultPayout  # noqa: F401
+from app.models.notification import PushToken  # noqa: F401

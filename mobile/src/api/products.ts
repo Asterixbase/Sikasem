@@ -39,6 +39,9 @@ export const productsApi = {
   createCategory: (body: { name: string; parent_id?: string }) =>
     api.post<CategoryNode>('/categories', body),
 
+  getProducts: (params?: { limit?: number; q?: string }) =>
+    api.get('/products', { params }),
+
   priceHistory: (id: string) =>
     api.get(`/products/${id}/price-history`),
 };

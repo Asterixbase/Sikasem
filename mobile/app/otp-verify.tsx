@@ -5,11 +5,13 @@ import {
 import { useAuthStore } from '@/store/auth';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { OTPInput, Button, SikasemLogo } from '@/components';
+import { useTierStore } from '@/store/tier';
 
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
 export default function OtpVerifyScreen() {
   const { phone, verifyOtp, sendOtp, isLoading, error, clearError } = useAuthStore();
+  const logoVariant = useTierStore(s => s.logoVariant);
 
   // Step 1 = enter phone, Step 2 = enter OTP
   const [step, setStep] = useState<1 | 2>(phone ? 2 : 1);
@@ -97,7 +99,7 @@ export default function OtpVerifyScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.logoWrap}>
-            <SikasemLogo size="lg" layout="column" showTagline />
+            <SikasemLogo size="lg" layout="column" showTagline variant={logoVariant} />
           </View>
 
           <Text style={styles.heading}>Enter your phone</Text>
@@ -149,7 +151,7 @@ export default function OtpVerifyScreen() {
 
       {/* Logo */}
       <View style={styles.logoWrap}>
-        <SikasemLogo size="md" layout="row" showTagline={false} />
+        <SikasemLogo size="md" layout="row" showTagline={false} variant={logoVariant} />
       </View>
 
       <Text style={styles.heading}>Check your phone</Text>

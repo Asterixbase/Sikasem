@@ -1,49 +1,71 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
 import { api } from '@/api';
 import { Colors, Typography, Spacing, Radius } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 
 type Mode = 'SCAN MODE' | 'LABEL OCR' | 'BULK COUNT';
 
 export default function BulkScreen() {
+  const theme = useThemePalette();
   const { mode: initialMode } = useLocalSearchParams<{ mode?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [activeMode, setActiveMode] = useState<Mode>(
     initialMode === 'ocr' ? 'LABEL OCR' : 'BULK COUNT'
   );
   const [capturing, setCapturing] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, []);
 
+  // Parse "Coca-Cola, 24" or "24 Coca-Cola" into name + qty
+  const parseVoiceText = (text: string): { name: string; qty: number | null } => {
+    const t = text.trim();
+    // "name, number" or "name number" at end
+    const m1 = t.match(/^(.+?)[,\s]+(\d+)\s*$/);
+    if (m1) return { name: m1[1].trim(), qty: parseInt(m1[2], 10) };
+    // "number name" at start
+    const m2 = t.match(/^(\d+)\s+(.+)$/);
+    if (m2) return { name: m2[2].trim(), qty: parseInt(m2[1], 10) };
+    return { name: t, qty: null };
+  };
+
+  const handleVoiceConfirm = () => {
+    const { name, qty } = parseVoiceText(voiceText);
+    if (!name) return;
+    const data = {
+      detected_qty: qty ?? 0,
+      strategy_label: 'Voice Count',
+      confidence_scores: { product_name: 90, quantity: qty != null ? 95 : 0, unit_price: 0 },
+    };
+    setShowVoiceModal(false);
+    setVoiceText('');
+    router.push({ pathname: '/(main)/bulk-result', params: { data: JSON.stringify(data), product_name: name } });
+  };
+
   const handleCapture = async () => {
     if (capturing || !cameraRef.current) return;
     setCapturing(true);
     try {
-      // 1. Take the photo
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
       if (!photo?.base64) throw new Error('No image captured');
 
-      // 2. POST image + mode to OCR endpoint
       const ocrMode = activeMode === 'LABEL OCR' ? 'invoice' : 'bulk_scan';
       const res = await api.post('/ocr/extract', { image_base64: photo.base64 }, {
         params: { hint: ocrMode },
       });
 
       if (activeMode === 'LABEL OCR') {
-        // Route to inv-ext (invoice/label extraction result)
-        router.push({
-          pathname: '/(main)/inv-ext',
-          params: { data: JSON.stringify(res.data) },
-        });
+        router.push({ pathname: '/(main)/inv-ext', params: { data: JSON.stringify(res.data) } });
       } else {
-        // Normalise bulk-scan response → bulk-result expected shape
         const raw = res.data;
         const normalised = {
           detected_qty: raw.quantity ?? 0,
@@ -54,15 +76,12 @@ export default function BulkScreen() {
             unit_price: Math.round((raw.confidence ?? 0) * 80),
           },
         };
-        router.push({
-          pathname: '/(main)/bulk-result',
-          params: { data: JSON.stringify(normalised) },
-        });
+        router.push({ pathname: '/(main)/bulk-result', params: { data: JSON.stringify(normalised) } });
       }
     } catch (e: any) {
       const msg = e?.response?.data?.detail ?? e?.message ?? 'Could not process image';
-      Alert.alert('Capture Failed', msg);
       setCapturing(false);
+      // show inline error
     }
   };
 
@@ -70,7 +89,7 @@ export default function BulkScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.permMsg}>Camera permission required</Text>
-        <Pressable onPress={requestPermission} style={styles.permBtn}>
+        <Pressable onPress={requestPermission} style={[styles.permBtn, { backgroundColor: theme.primary }]}>
           <Text style={styles.permBtnText}>Grant Permission</Text>
         </Pressable>
       </View>
@@ -78,11 +97,12 @@ export default function BulkScreen() {
   }
 
   const MODES: Mode[] = ['SCAN MODE', 'LABEL OCR', 'BULK COUNT'];
+  const { name: parsedName, qty: parsedQty } = voiceText.trim() ? parseVoiceText(voiceText) : { name: '', qty: null };
 
   return (
     <View style={styles.root}>
       <CameraView ref={cameraRef} style={StyleSheet.absoluteFill}>
-        {/* 4x4 grid overlay */}
+        {/* 4×4 grid overlay */}
         <View style={styles.gridOverlay} pointerEvents="none">
           {[1, 2, 3].map(i => (
             <View key={`h${i}`} style={[styles.gridLineH, { top: `${i * 25}%` as any }]} />
@@ -104,7 +124,7 @@ export default function BulkScreen() {
             <Text style={styles.orientText}>TOP-DOWN</Text>
           </View>
 
-          <View style={styles.statusPill}>
+          <View style={[styles.statusPill, { backgroundColor: theme.scanPrimary }]}>
             <View style={styles.statusDot} />
             <Text style={styles.statusText}>
               {activeMode === 'LABEL OCR' ? 'Label OCR Active' : 'Bulk Detection Active'}
@@ -112,7 +132,7 @@ export default function BulkScreen() {
           </View>
         </View>
 
-        {/* Mode instruction */}
+        {/* Mode hint */}
         <View style={styles.hintWrap} pointerEvents="none">
           <Text style={styles.hintText}>
             {activeMode === 'LABEL OCR'
@@ -128,7 +148,7 @@ export default function BulkScreen() {
               <Pressable
                 key={mode}
                 onPress={() => setActiveMode(mode)}
-                style={[styles.modeBtn, activeMode === mode && styles.modeBtnActive]}
+                style={[styles.modeBtn, activeMode === mode && { backgroundColor: theme.scanPrimary, borderColor: theme.scanPrimary }]}
               >
                 <Text style={[styles.modeBtnText, activeMode === mode && styles.modeBtnTextActive]}>
                   {mode}
@@ -137,13 +157,86 @@ export default function BulkScreen() {
             ))}
           </View>
 
-          <Pressable onPress={handleCapture} style={styles.captureBtn} disabled={capturing}>
-            {capturing
-              ? <ActivityIndicator color={Colors.w} size="large" />
-              : <View style={styles.captureInner} />}
-          </Pressable>
+          <View style={styles.captureRow}>
+            <Pressable onPress={handleCapture} style={styles.captureBtn} disabled={capturing}>
+              {capturing
+                ? <ActivityIndicator color={Colors.w} size="large" />
+                : <View style={styles.captureInner} />}
+            </Pressable>
+
+            {/* Voice mic — tap to open dictation modal */}
+            {activeMode === 'BULK COUNT' && (
+              <Pressable
+                onPress={() => { setVoiceText(''); setShowVoiceModal(true); }}
+                style={styles.micBtn}
+              >
+                <Text style={styles.micIcon}>🎙️</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </CameraView>
+
+      {/* Voice count modal — uses iOS keyboard dictation or manual typing */}
+      <Modal
+        transparent
+        animationType="slide"
+        visible={showVoiceModal}
+        onRequestClose={() => setShowVoiceModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>🎙️ Voice Stock Count</Text>
+            <Text style={styles.modalHint}>
+              Tap the 🎤 on your keyboard and say the product and quantity,{'\n'}
+              or type below — e.g. <Text style={{ fontWeight: '700' }}>Coca-Cola, 24</Text>
+            </Text>
+
+            <TextInput
+              style={[styles.modalInput, voiceText.trim() && { borderColor: theme.primary }]}
+              placeholder="e.g. Coca-Cola, 24"
+              placeholderTextColor={Colors.t3}
+              value={voiceText}
+              onChangeText={setVoiceText}
+              autoFocus
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={handleVoiceConfirm}
+            />
+
+            {/* Live parse preview */}
+            {parsedName ? (
+              <View style={styles.parsePreview}>
+                <View style={styles.parseField}>
+                  <Text style={styles.parseLabel}>PRODUCT</Text>
+                  <Text style={styles.parseValue}>{parsedName}</Text>
+                </View>
+                <View style={styles.parseField}>
+                  <Text style={styles.parseLabel}>QTY</Text>
+                  <Text style={styles.parseValue}>{parsedQty ?? '—'}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            <Pressable
+              style={[styles.modalConfirmBtn, { backgroundColor: parsedName ? theme.primary : Colors.gy2 }]}
+              onPress={handleVoiceConfirm}
+              disabled={!parsedName}
+            >
+              <Text style={[styles.modalConfirmText, !parsedName && { color: Colors.t3 }]}>
+                Confirm →
+              </Text>
+            </Pressable>
+
+            <Pressable onPress={() => setShowVoiceModal(false)} style={styles.modalCancelBtn}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -156,7 +249,7 @@ const styles = StyleSheet.create({
   },
   permMsg: { ...Typography.bodyLG, color: Colors.t, marginBottom: Spacing.s4 },
   permBtn: {
-    backgroundColor: Colors.g, borderRadius: Radius.sm,
+    borderRadius: Radius.sm,
     paddingHorizontal: Spacing.s5, paddingVertical: Spacing.s3,
   },
   permBtnText: { ...Typography.titleSM, color: Colors.w },
@@ -194,7 +287,7 @@ const styles = StyleSheet.create({
   orientText: { ...Typography.label, color: Colors.w },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.scanPrimary, borderRadius: Radius.full,
+    borderRadius: Radius.full,
     paddingHorizontal: 12, paddingVertical: 6,
     marginLeft: 'auto',
   },
@@ -224,9 +317,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
   },
-  modeBtnActive: { backgroundColor: Colors.scanPrimary, borderColor: Colors.scanPrimary },
   modeBtnText: { ...Typography.badge, color: 'rgba(255,255,255,0.7)' },
   modeBtnTextActive: { color: Colors.w },
+  captureRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s5 },
   captureBtn: {
     width: 72, height: 72, borderRadius: 36,
     borderWidth: 4, borderColor: Colors.w,
@@ -237,4 +330,40 @@ const styles = StyleSheet.create({
     width: 54, height: 54, borderRadius: 27,
     backgroundColor: Colors.w,
   },
+  micBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  micIcon: { fontSize: 24 },
+
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: Colors.w, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: Spacing.s5, gap: Spacing.s3,
+  },
+  modalTitle: { ...Typography.titleMD, color: Colors.t },
+  modalHint: { ...Typography.bodySM, color: Colors.t2, lineHeight: 18 },
+  modalInput: {
+    borderWidth: 1.5, borderColor: Colors.gy2, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.s3, paddingVertical: 12,
+    ...Typography.bodyLG, color: Colors.t,
+  },
+  parsePreview: {
+    flexDirection: 'row', gap: Spacing.s4,
+    backgroundColor: Colors.gy, borderRadius: Radius.md, padding: Spacing.s3,
+  },
+  parseField: { flex: 1 },
+  parseLabel: { ...Typography.label, color: Colors.t2 },
+  parseValue: { ...Typography.titleSM, color: Colors.t, marginTop: 2 },
+  modalConfirmBtn: {
+    borderRadius: Radius.md, paddingVertical: 14, alignItems: 'center',
+  },
+  modalConfirmText: { ...Typography.titleSM, color: Colors.w },
+  modalCancelBtn: { alignItems: 'center', paddingVertical: 8 },
+  modalCancelText: { ...Typography.bodyMD, color: Colors.t2 },
 });

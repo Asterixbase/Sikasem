@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 import {
   ScreenHeader,
   SafeScrollView,
@@ -31,6 +32,7 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsScreen() {
+  const theme = useThemePalette();
   const { data, isLoading, error } = useQuery<AnalyticsData>({
     queryKey: ['analytics'],
     queryFn: () => analyticsApi.analytics().then(r => r.data),
@@ -56,19 +58,26 @@ export default function AnalyticsScreen() {
           subtitle="vs previous period"
         />
 
-        {/* 2×2 KPI grid */}
+        {/* 2×2 KPI grid — each tile drills to a detail screen */}
         <View style={styles.tileRow}>
           <MetricTile
             label="Total Revenue"
             value={`GHS ${(d.total_revenue_pesawas / 100).toLocaleString('en-GH', { minimumFractionDigits: 2 })}`}
+            onPress={() => router.push('/(main)/sold-today')}
           />
           <MetricTile
             label="Gross Profit"
             value={`GHS ${(d.gross_profit_pesawas / 100).toLocaleString('en-GH', { minimumFractionDigits: 2 })}`}
+            positive
+            onPress={() => router.push('/(main)/margins')}
           />
         </View>
         <View style={styles.tileRow}>
-          <MetricTile label="Transactions" value={String(d.transactions)} />
+          <MetricTile
+            label="Transactions"
+            value={String(d.transactions)}
+            onPress={() => router.push('/(main)/sold-today')}
+          />
           <MetricTile
             label="Avg Basket"
             value={`GHS ${(d.avg_basket_pesawas / 100).toFixed(2)}`}

@@ -21,4 +21,13 @@ export const analyticsApi = {
 
   whatsappOrder: (items: string) =>
     api.get(`/reorder/whatsapp-order?items=${items}`),
+
+  morningStock: () =>
+    api.get('/reports/morning-stock'),
+
+  dailyReconciliation: () =>
+    api.get('/reports/daily-reconciliation'),
+
+  eodSummary: () =>
+    api.get('/reports/eod-summary'),
 };

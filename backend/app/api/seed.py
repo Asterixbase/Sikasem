@@ -125,14 +125,14 @@ async def seed_demo(
     _, shop = auth
     sid = shop.id
 
-    # ── 1. Clear existing demo data for this shop ──────────────────────────────
-    # Delete in FK-safe order
-    demo_refs = (await db.execute(
-        select(Sale.id).where(Sale.shop_id == sid, Sale.reference.like("DEMO-%"))
+    # ── 1. Clear ALL existing data for this shop (FK-safe order) ─────────────
+    # Sales and their items first (SaleItem.product_id has no ON DELETE CASCADE)
+    all_sale_ids = (await db.execute(
+        select(Sale.id).where(Sale.shop_id == sid)
     )).scalars().all()
-    if demo_refs:
-        await db.execute(delete(SaleItem).where(SaleItem.sale_id.in_(demo_refs)))
-        await db.execute(delete(Sale).where(Sale.id.in_(demo_refs)))
+    if all_sale_ids:
+        await db.execute(delete(SaleItem).where(SaleItem.sale_id.in_(all_sale_ids)))
+        await db.execute(delete(Sale).where(Sale.id.in_(all_sale_ids)))
 
     # Credit
     demo_cust_ids = (await db.execute(
@@ -210,7 +210,7 @@ async def seed_demo(
     sellable = [p for p in products if p.sell_price_pesawas > 0]
 
     sale_counter = 0
-    for day_offset in range(14, 0, -1):
+    for day_offset in range(14, -1, -1):  # 14 days ago → today (0)
         d = date.today() - timedelta(days=day_offset)
         is_weekend = d.weekday() >= 6   # Sunday only quiet
         n_sales = rng.randint(3, 6) if is_weekend else rng.randint(8, 15)

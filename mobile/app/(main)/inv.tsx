@@ -4,10 +4,12 @@ import { CameraView, useCameraPermissions, CameraCapturedPicture } from 'expo-ca
 import { router } from 'expo-router';
 import { taxApi } from '@/api';
 import { Colors, Typography } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 
 type ScanTab = 'SINGLE' | 'BATCH' | 'AUTO';
 
 export default function InvScanScreen() {
+  const theme = useThemePalette();
   const [permission, requestPermission] = useCameraPermissions();
   const [activeTab, setActiveTab] = useState<ScanTab>('SINGLE');
   const [capturing, setCapturing] = useState(false);
@@ -34,7 +36,7 @@ export default function InvScanScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.permMsg}>Camera permission required</Text>
-        <Pressable onPress={requestPermission} style={styles.permBtn}>
+        <Pressable onPress={requestPermission} style={[styles.permBtn, { backgroundColor: theme.primary }]}>
           <Text style={styles.permBtnText}>Grant Permission</Text>
         </Pressable>
       </View>
@@ -49,7 +51,7 @@ export default function InvScanScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backIcon}>‹</Text>
           </Pressable>
-          <View style={styles.statusPill}>
+          <View style={[styles.statusPill, { backgroundColor: theme.primary }]}>
             <View style={styles.pillDot} />
             <Text style={styles.pillText}>OCR ARCHIVIST ACTIVE</Text>
           </View>
@@ -60,10 +62,10 @@ export default function InvScanScreen() {
         <View style={styles.centerOverlay}>
           {/* Corner brackets */}
           <View style={styles.bracketFrame}>
-            <View style={[styles.corner, styles.tl]} />
-            <View style={[styles.corner, styles.tr]} />
-            <View style={[styles.corner, styles.bl]} />
-            <View style={[styles.corner, styles.br]} />
+            <View style={[styles.corner, styles.tl, { borderColor: theme.scanPrimary }]} />
+            <View style={[styles.corner, styles.tr, { borderColor: theme.scanPrimary }]} />
+            <View style={[styles.corner, styles.bl, { borderColor: theme.scanPrimary }]} />
+            <View style={[styles.corner, styles.br, { borderColor: theme.scanPrimary }]} />
             <Text style={styles.centerText}>Point at invoice</Text>
           </View>
 
@@ -84,7 +86,7 @@ export default function InvScanScreen() {
             {(['SINGLE', 'BATCH', 'AUTO'] as ScanTab[]).map(tab => (
               <Pressable
                 key={tab}
-                style={[styles.tab, activeTab === tab && styles.tabActive]}
+                style={[styles.tab, activeTab === tab && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                 onPress={() => setActiveTab(tab)}
               >
                 <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
@@ -112,7 +114,7 @@ const styles = StyleSheet.create({
   camera: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gy },
   permMsg: { ...Typography.bodyLG, color: Colors.t, marginBottom: 16 },
-  permBtn: { backgroundColor: Colors.g, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 12 },
+  permBtn: { borderRadius: 8, paddingHorizontal: 20, paddingVertical: 12 },
   permBtnText: { color: Colors.w, fontWeight: '700' },
 
   topBar: {
@@ -126,14 +128,14 @@ const styles = StyleSheet.create({
   backIcon: { fontSize: 22, color: Colors.w, lineHeight: 26, marginTop: -1 },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.g, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
   },
   pillDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.w },
   pillText: { ...Typography.badge, color: Colors.w, letterSpacing: 0.5 },
 
   centerOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bracketFrame: { width: 260, height: 180, position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  corner: { position: 'absolute', width: 28, height: 28, borderColor: Colors.g, borderWidth: 3 },
+  corner: { position: 'absolute', width: 28, height: 28, borderWidth: 3 },
   tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
   tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
@@ -156,7 +158,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 8,
     borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
-  tabActive: { backgroundColor: Colors.g, borderColor: Colors.g },
+  tabActive: {},
   tabText: { ...Typography.badge, color: 'rgba(255,255,255,0.6)' },
   tabTextActive: { color: Colors.w },
 

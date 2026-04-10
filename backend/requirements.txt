@@ -16,6 +16,7 @@ structlog==24.4.0
 phonenumbers==8.13.44
 apscheduler==3.10.4
 anthropic>=0.40.0
+Pillow>=10.0.0
 
 # Testing
 pytest==8.3.3

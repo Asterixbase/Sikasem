@@ -9,6 +9,7 @@ import {
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows, CreditStatus } from '@/constants';
 import { fmtDateLong } from '@/utils/date';
+import { useThemePalette } from '@/store/theme';
 
 type Filter = 'all' | 'overdue' | 'due_tomorrow' | 'pending';
 
@@ -34,6 +35,12 @@ function statusBadgeVariant(status: string): 'red' | 'amber' | 'blue' | 'green' 
   return 'green';
 }
 
+function riskFromStatus(status: string): { emoji: string; label: string; color: string } | null {
+  if (status === 'overdue') return { emoji: '🔴', label: 'HIGH RISK', color: Colors.r };
+  if (status === 'due_tomorrow') return { emoji: '🟡', label: 'DUE SOON', color: Colors.a };
+  return null;
+}
+
 function statusLabel(status: string): string {
   if (status === 'overdue') return 'OVERDUE';
   if (status === 'due_tomorrow') return 'DUE TOMORROW';
@@ -43,6 +50,7 @@ function statusLabel(status: string): string {
 }
 
 export default function CreditListScreen() {
+  const theme = useThemePalette();
   const [filter, setFilter] = useState<Filter>('all');
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -121,8 +129,16 @@ export default function CreditListScreen() {
                       <Text style={styles.dueDate}>{fmtDateLong(sale.due_date)}</Text>
                     </View>
                     <View style={styles.badgeRow}>
+                      {riskFromStatus(sale.status) && (
+                        <View style={[styles.riskPill, { backgroundColor: riskFromStatus(sale.status)!.color + '22' }]}>
+                          <Text style={styles.riskEmoji}>{riskFromStatus(sale.status)!.emoji}</Text>
+                          <Text style={[styles.riskLabel, { color: riskFromStatus(sale.status)!.color }]}>
+                            {riskFromStatus(sale.status)!.label}
+                          </Text>
+                        </View>
+                      )}
                       <Badge label={statusLabel(sale.status)} variant={statusBadgeVariant(sale.status)} />
-                      <Text style={styles.details}>Details →</Text>
+                      <Text style={[styles.details, { color: theme.primary }]}>Details →</Text>
                     </View>
                   </View>
                 </View>
@@ -132,7 +148,7 @@ export default function CreditListScreen() {
         )}
 
         {/* Weekly collection target card */}
-        <View style={styles.targetCard}>
+        <View style={[styles.targetCard, { backgroundColor: theme.primary }]}>
           <Text style={styles.targetTitle}>Weekly Collection Target</Text>
           <Text style={styles.targetSub}>
             Stay on track — follow up on overdue accounts
@@ -148,7 +164,7 @@ export default function CreditListScreen() {
 
       {/* FAB */}
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: theme.primary }]}
         onPress={() => router.push('/(main)/credit-new')}
       >
         <Text style={styles.fabIcon}>+</Text>
@@ -183,12 +199,17 @@ const styles = StyleSheet.create({
   dueDateLabel: { ...Typography.micro, color: Colors.t2, textTransform: 'uppercase', letterSpacing: 0.5 },
   dueDate: { ...Typography.bodySM, color: Colors.t, fontWeight: '500' },
   amount: { ...Typography.titleSM, color: Colors.t, marginLeft: Spacing.s2 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2, flexWrap: 'wrap' },
+  riskPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3,
+  },
+  riskEmoji: { fontSize: 10 },
+  riskLabel: { ...Typography.micro, fontWeight: '700', letterSpacing: 0.3 },
   details: { ...Typography.bodyMD, color: Colors.g, fontWeight: '600' },
   targetCard: {
     margin: Spacing.s4,
     marginTop: Spacing.s3,
-    backgroundColor: Colors.g,
     borderRadius: Radius.xl,
     padding: Spacing.s5,
     ...Shadows.card,
@@ -203,7 +224,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute', right: Spacing.s5, bottom: 100,
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: Colors.g,
     alignItems: 'center', justifyContent: 'center',
     ...Shadows.fab,
   },

@@ -95,6 +95,44 @@ async def create_sale(
     )
 
 
+@router.get("/{sale_id}")
+async def get_sale(
+    sale_id: str,
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch a completed sale with its line items — used for WhatsApp receipt."""
+    _, shop = auth
+    sale = await db.get(Sale, sale_id)
+    if not sale or sale.shop_id != shop.id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    items_result = await db.execute(select(SaleItem).where(SaleItem.sale_id == sale_id))
+    items = items_result.scalars().all()
+
+    line_items = []
+    for item in items:
+        product = await db.get(Product, item.product_id)
+        line_items.append({
+            "product_id": item.product_id,
+            "name": product.name if product else "Unknown",
+            "emoji": (product.emoji or "📦") if product else "📦",
+            "quantity": item.quantity,
+            "unit_price_pesawas": item.unit_price_pesawas,
+            "subtotal_pesawas": item.quantity * item.unit_price_pesawas,
+        })
+
+    return {
+        "sale_id": sale.id,
+        "reference": sale.reference,
+        "total_pesawas": sale.total_pesawas,
+        "payment_method": sale.payment_method,
+        "created_at": sale.created_at.isoformat() if sale.created_at else None,
+        "items": line_items,
+    }
+
+
 @router.get("/batch/today", response_model=DailyBatchResponse)
 async def today_batch(
     auth=Depends(get_current_shop),

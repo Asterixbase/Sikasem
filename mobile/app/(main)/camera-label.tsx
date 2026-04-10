@@ -33,6 +33,7 @@ export default function CameraLabelScreen() {
 
       const res = await api.post('/ocr/extract', { image_base64: photo.base64 }, {
         params: { hint: 'product_label' },
+        timeout: 90_000,  // 90s — Claude vision + network can take 30-60s
       });
 
       setResult(res.data);
@@ -67,7 +68,7 @@ export default function CameraLabelScreen() {
             <Text style={styles.backLabel}>Back</Text>
           </Pressable>
           <View style={styles.pill}>
-            <Text style={styles.pillText}>POINT AT PRODUCT LABEL</Text>
+            <Text style={styles.pillText}>POINT AT PRICE TAG / LABEL TEXT</Text>
           </View>
         </View>
 
@@ -87,7 +88,7 @@ export default function CameraLabelScreen() {
               />
             ))}
           </View>
-          <Text style={styles.hint}>Align the label within the frame</Text>
+          <Text style={styles.hint}>Focus on price & product text — not the barcode</Text>
         </View>
 
         {/* Error message */}
@@ -105,7 +106,7 @@ export default function CameraLabelScreen() {
               ? <ActivityIndicator color={Colors.w} size="large" />
               : <View style={styles.captureInner} />}
           </Pressable>
-          {loading && <Text style={styles.loadingText}>Reading label…</Text>}
+          {loading && <Text style={styles.loadingText}>Reading label — this may take up to 30 seconds…</Text>}
         </View>
       </CameraView>
     </View>
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   frameWrap: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
   },
-  labelFrame: { width: 280, height: 170, position: 'relative', marginBottom: 16 },
+  labelFrame: { width: 300, height: 220, position: 'relative', marginBottom: 16 },
   corner: {
     position: 'absolute', width: 30, height: 30,
     borderColor: Colors.scanPrimary, borderWidth: 3,

@@ -41,6 +41,82 @@ def _initials(name: str) -> str:
     return "".join(p[0].upper() for p in parts[:2]) if parts else "??"
 
 
+@router.get("/customers")
+async def list_customers(
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all credit customers for this shop."""
+    _, shop = auth
+    result = await db.execute(
+        select(CreditCustomer).where(CreditCustomer.shop_id == shop.id)
+        .order_by(CreditCustomer.created_at.desc())
+    )
+    customers = result.scalars().all()
+    return [
+        {
+            "id": c.id,
+            "full_name": c.full_name,
+            "phone": c.phone,
+            "initials": _initials(c.full_name),
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in customers
+    ]
+
+
+@router.get("/customers/{customer_id}/score")
+async def customer_credit_score(
+    customer_id: str,
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute a 1–10 credit score for a customer based on repayment history."""
+    _, shop = auth
+    customer = await db.get(CreditCustomer, customer_id)
+    if not customer or customer.shop_id != shop.id:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    result = await db.execute(
+        select(CreditSale).where(
+            CreditSale.customer_id == customer_id,
+            CreditSale.shop_id == shop.id,
+        )
+    )
+    sales = result.scalars().all()
+
+    if not sales:
+        return {
+            "score": 10, "label": "New", "risk": "low", "color": "green",
+            "sales_count": 0, "paid_count": 0, "overdue_count": 0, "outstanding_pesawas": 0,
+        }
+
+    paid = [s for s in sales if s.status == "paid"]
+    overdue = [s for s in sales if _compute_status(s) == "overdue"]
+    pending = [s for s in sales if s.status == "pending"]
+
+    base = 10.0
+    overdue_penalty = min(len(overdue) * 2.5, 8.0)
+    pending_penalty = min(len(pending) * 0.3, 2.0)
+    score = max(1, round(base - overdue_penalty - pending_penalty))
+    outstanding = sum(s.amount_pesawas for s in pending) + sum(s.amount_pesawas for s in overdue)
+
+    if score >= 9:
+        label, risk, color = "Excellent", "low", "green"
+    elif score >= 7:
+        label, risk, color = "Good", "low", "green"
+    elif score >= 5:
+        label, risk, color = "Fair", "medium", "amber"
+    else:
+        label, risk, color = "Poor", "high", "red"
+
+    return {
+        "score": score, "label": label, "risk": risk, "color": color,
+        "sales_count": len(sales), "paid_count": len(paid),
+        "overdue_count": len(overdue), "outstanding_pesawas": outstanding,
+    }
+
+
 @router.post("/customers", response_model=CreditCustomerOut, status_code=201)
 async def create_customer(
     body: CreditCustomerCreate,

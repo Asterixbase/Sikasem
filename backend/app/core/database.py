@@ -33,8 +33,7 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db() -> None:
-    """Create all tables on startup (dev only — use Alembic in production)."""
-    if settings.is_dev:
-        async with engine.begin() as conn:
-            from app.models import base  # noqa: F401 — ensures all models are imported
-            await conn.run_sync(Base.metadata.create_all)
+    """Create all tables on startup. create_all is idempotent — safe to run in production."""
+    async with engine.begin() as conn:
+        from app.models import base  # noqa: F401 — ensures all models are imported
+        await conn.run_sync(Base.metadata.create_all)

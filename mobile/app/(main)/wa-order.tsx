@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -51,13 +51,15 @@ export default function WAOrderScreen() {
     queryKey: ['whatsappOrder', items],
     queryFn: () =>
       analyticsApi.whatsappOrder(items ?? '').then(r => r.data),
-    onSuccess: (d: WAOrderData) => {
-      if (!initialised) {
-        setMessage(d.message);
-        setInitialised(true);
-      }
-    },
-  } as any);
+  });
+
+  // Populate editable message once data arrives (onSuccess removed in TanStack Query v5)
+  useEffect(() => {
+    if (data && !initialised) {
+      setMessage(data.message);
+      setInitialised(true);
+    }
+  }, [data]);
 
   const appendChip = useCallback((chip: string) => {
     setMessage(prev => {

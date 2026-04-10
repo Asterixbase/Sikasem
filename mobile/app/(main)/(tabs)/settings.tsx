@@ -6,8 +6,12 @@ import { api } from '@/api';
 import { useAuthStore, ShopRole } from '@/store/auth';
 import { useRole } from '@/hooks/useRole';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-import { SafeScrollView, Button, Badge } from '@/components';
-import { useThemeStore, THEMES, ThemeId } from '@/store/theme';
+import { SafeScrollView, Button, Badge, SikasemLogo } from '@/components';
+import { useThemeStore, useThemePalette, THEMES, ThemeId } from '@/store/theme';
+import {
+  useTierStore, TIER_CONFIG, LOGO_DESCRIPTIONS,
+  type TierId, type LogoVariant,
+} from '@/store/tier';
 
 const ROLE_LABELS: Record<ShopRole, string> = {
   owner:     'Owner',
@@ -29,12 +33,22 @@ function roleVariant(role: ShopRole): 'green' | 'blue' | 'amber' {
   return 'amber';
 }
 
+const TIER_ORDER: TierId[] = ['starter', 'growth', 'pro'];
+const LOGO_VARIANTS: LogoVariant[] = ['A', 'B', 'C'];
+
 export default function SettingsScreen() {
   const { shopId, role } = useAuthStore();
   const { isOwner, isSuperuser } = useRole();
   const [online, setOnline] = useState(true);
   const [dpaConsent, setDpaConsent] = useState(true);
   const [seeding, setSeeding] = useState(false);
+
+  const theme = useThemePalette();
+
+  const {
+    tier, activeTier, logoVariant,
+    setActiveTier, setLogoVariant,
+  } = useTierStore();
 
   const handleSeedDemo = () => {
     Alert.alert(
@@ -82,7 +96,7 @@ export default function SettingsScreen() {
       <SafeScrollView>
         {/* Shop card */}
         <View style={styles.shopCard}>
-          <View style={styles.shopLogo}>
+          <View style={[styles.shopLogo, { backgroundColor: theme.primary }]}>
             <Text style={styles.shopLogoText}>
               {shopName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
             </Text>
@@ -100,7 +114,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* SIKASEM PRO card */}
-        <View style={styles.proCard}>
+        <View style={[styles.proCard, { backgroundColor: theme.primary }]}>
           <View style={styles.proHeader}>
             <Text style={styles.proSparkle}>✦</Text>
             <Text style={styles.proTitle}>SIKASEM PRO</Text>
@@ -137,15 +151,73 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Superuser banner */}
+        {/* Superuser: tier testing + logo picker */}
         {isSuperuser && (
-          <View style={styles.superuserBanner}>
-            <Text style={styles.superuserIcon}>⚡</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.superuserTitle}>Superuser Mode Active</Text>
-              <Text style={styles.superuserSub}>All role gates bypassed · Full feature access enabled</Text>
+          <>
+            <View style={styles.superuserBanner}>
+              <Text style={styles.superuserIcon}>⚡</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.superuserTitle}>Superuser Mode Active</Text>
+                <Text style={styles.superuserSub}>All role gates bypassed · Full feature access enabled</Text>
+              </View>
             </View>
-          </View>
+
+            {/* Tier override — simulate what each tier user sees */}
+            <Text style={styles.sectionHeader}>TEST TIER VIEW</Text>
+            <View style={styles.tierOverrideCard}>
+              <Text style={styles.tierOverrideHint}>
+                Select a tier to preview the app as that user would see it.
+                {activeTier ? ` Currently testing as ${TIER_CONFIG[activeTier].label}.` : ' Currently showing full access.'}
+              </Text>
+              <View style={styles.tierPillRow}>
+                {TIER_ORDER.map(id => {
+                  const t = TIER_CONFIG[id];
+                  const active = activeTier === id;
+                  return (
+                    <Pressable
+                      key={id}
+                      style={[styles.tierPill, active && { backgroundColor: t.color, borderColor: t.color }]}
+                      onPress={() => setActiveTier(activeTier === id ? null : id)}
+                    >
+                      <Text style={[styles.tierPillText, active && { color: Colors.w }]}>
+                        {t.emoji} {t.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {activeTier && (
+                <Pressable style={styles.resetTierBtn} onPress={() => setActiveTier(null)}>
+                  <Text style={styles.resetTierText}>✕ Exit tier test — restore full access</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Logo variant picker */}
+            <Text style={styles.sectionHeader}>APP LOGO VARIANT</Text>
+            <View style={styles.logoPickCard}>
+              <Text style={styles.logoPickHint}>Choose which logo mark to display across the app.</Text>
+              <View style={styles.logoPickRow}>
+                {LOGO_VARIANTS.map(v => {
+                  const active = logoVariant === v;
+                  return (
+                    <Pressable
+                      key={v}
+                      style={[styles.logoPickOption, active && { borderColor: theme.primary, backgroundColor: theme.bgLight }]}
+                      onPress={() => setLogoVariant(v)}
+                    >
+                      <SikasemLogo size="sm" layout="column" showTagline={false} variant={v} color={theme.primary} />
+                      <Text style={[styles.logoPickLabel, active && { color: theme.primary, fontWeight: '700' }]}>
+                        {LOGO_DESCRIPTIONS[v].title}
+                      </Text>
+                      {active && <Text style={[styles.logoPickCheck, { color: theme.primary }]}>✓</Text>}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.logoPickDesc}>{LOGO_DESCRIPTIONS[logoVariant].desc}</Text>
+            </View>
+          </>
         )}
 
         {/* Theme picker */}
@@ -153,19 +225,22 @@ export default function SettingsScreen() {
         <View style={styles.themeCard}>
           <Text style={styles.themeHint}>Choose a colour theme to test</Text>
           <View style={styles.themeRow}>
-            {(Object.values(THEMES) as typeof THEMES[ThemeId][]).map(t => (
-              <Pressable
-                key={t.id}
-                style={[styles.themeSwatch, themeId === t.id && styles.themeSwatchActive]}
-                onPress={() => setTheme(t.id)}
-              >
-                <View style={[styles.swatchDot, { backgroundColor: t.swatch }]} />
-                <Text style={[styles.swatchLabel, themeId === t.id && styles.swatchLabelActive]}>
-                  {t.label}
-                </Text>
-                {themeId === t.id && <Text style={styles.swatchCheck}>✓</Text>}
-              </Pressable>
-            ))}
+            {(Object.values(THEMES) as typeof THEMES[ThemeId][]).map(t => {
+              const isActive = themeId === t.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  style={[styles.themeSwatch, isActive && { borderColor: t.swatch, backgroundColor: t.swatch + '18' }]}
+                  onPress={() => setTheme(t.id)}
+                >
+                  <View style={[styles.swatchDot, { backgroundColor: t.swatch }]} />
+                  <Text style={[styles.swatchLabel, isActive && { color: t.swatch, fontWeight: '700' }]}>
+                    {t.label}
+                  </Text>
+                  {isActive && <Text style={[styles.swatchCheck, { color: t.swatch }]}>✓</Text>}
+                </Pressable>
+              );
+            })}
           </View>
           <Text style={styles.themeNote}>
             Theme colours apply to buttons, cards and the hero. Restart the app if needed.
@@ -209,7 +284,7 @@ export default function SettingsScreen() {
             <Switch
               value={online}
               onValueChange={setOnline}
-              trackColor={{ false: Colors.gy2, true: Colors.g }}
+              trackColor={{ false: Colors.gy2, true: theme.primary }}
               thumbColor={Colors.w}
             />
           </View>
@@ -218,7 +293,7 @@ export default function SettingsScreen() {
             <Switch
               value={dpaConsent}
               onValueChange={setDpaConsent}
-              trackColor={{ false: Colors.gy2, true: Colors.g }}
+              trackColor={{ false: Colors.gy2, true: theme.primary }}
               thumbColor={Colors.w}
             />
           </View>
@@ -229,7 +304,7 @@ export default function SettingsScreen() {
           <>
             <Text style={styles.sectionHeader}>DEVELOPER TOOLS</Text>
             <Pressable
-              style={[styles.seedBtn, seeding && { opacity: 0.6 }]}
+              style={[styles.seedBtn, { backgroundColor: theme.primary }, seeding && { opacity: 0.6 }]}
               onPress={handleSeedDemo}
               disabled={seeding}
             >
@@ -282,7 +357,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg, padding: Spacing.s4, ...Shadows.card,
   },
   shopLogo: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.g,
+    width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.g, // overridden inline with theme.primary
     alignItems: 'center', justifyContent: 'center', marginRight: Spacing.s3,
   },
   shopLogoText: { ...Typography.titleMD, color: Colors.w },
@@ -291,7 +366,7 @@ const styles = StyleSheet.create({
   shopLocation: { ...Typography.bodySM, color: Colors.t2, marginTop: 2 },
   editBtn: { marginHorizontal: 0, paddingVertical: 8, paddingHorizontal: 12, marginVertical: 0 },
   proCard: {
-    margin: Spacing.s4, backgroundColor: Colors.g,
+    margin: Spacing.s4, backgroundColor: Colors.g, // overridden inline
     borderRadius: Radius.xl, padding: Spacing.s5,
   },
   proHeader: {
@@ -353,7 +428,8 @@ const styles = StyleSheet.create({
   seedBtn: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: Spacing.s4, marginBottom: Spacing.s3,
-    backgroundColor: Colors.g, borderRadius: Radius.lg,
+    backgroundColor: Colors.g, // overridden inline with theme.primary
+    borderRadius: Radius.lg,
     padding: Spacing.s4, gap: Spacing.s2,
   },
   seedIcon: { fontSize: 18 },
@@ -371,6 +447,43 @@ const styles = StyleSheet.create({
     ...Typography.bodySM, color: Colors.t2,
     textAlign: 'center', margin: Spacing.s8,
   },
+
+  // Tier override panel
+  tierOverrideCard: {
+    marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
+    borderRadius: Radius.lg, padding: Spacing.s4, ...Shadows.card,
+  },
+  tierOverrideHint: { ...Typography.bodyMD, color: Colors.t2, marginBottom: Spacing.s3, lineHeight: 18 },
+  tierPillRow: { flexDirection: 'row', gap: Spacing.s2, flexWrap: 'wrap', marginBottom: Spacing.s2 },
+  tierPill: {
+    paddingHorizontal: Spacing.s3, paddingVertical: Spacing.s2,
+    borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.gy2,
+    backgroundColor: Colors.gy,
+  },
+  tierPillText: { ...Typography.badge, color: Colors.t2, fontWeight: '600' },
+  resetTierBtn: {
+    marginTop: Spacing.s2, alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.s3, paddingVertical: 6,
+    backgroundColor: Colors.r, borderRadius: Radius.md,
+  },
+  resetTierText: { ...Typography.badge, color: Colors.rt, fontWeight: '700' },
+
+  // Logo picker
+  logoPickCard: {
+    marginHorizontal: Spacing.s4, backgroundColor: Colors.w,
+    borderRadius: Radius.lg, padding: Spacing.s4, ...Shadows.card,
+  },
+  logoPickHint: { ...Typography.bodyMD, color: Colors.t2, marginBottom: Spacing.s3 },
+  logoPickRow: { flexDirection: 'row', gap: Spacing.s2, marginBottom: Spacing.s2 },
+  logoPickOption: {
+    flex: 1, alignItems: 'center', paddingVertical: Spacing.s3,
+    borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.gy2, gap: 6,
+  },
+  logoPickOptionActive: { borderColor: Colors.g, backgroundColor: Colors.gl },
+  logoPickLabel: { ...Typography.badge, color: Colors.t2, textAlign: 'center', fontSize: 10 },
+  logoPickLabelActive: { color: Colors.g, fontWeight: '700' },
+  logoPickCheck: { fontSize: 11, color: Colors.g, fontWeight: '700' },
+  logoPickDesc: { ...Typography.bodySM, color: Colors.t2, textAlign: 'center' },
 
   // Superuser banner
   superuserBanner: {

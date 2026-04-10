@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 import {
   ScreenHeader,
   SafeScrollView,
@@ -42,6 +43,7 @@ const PERIOD_CHIPS = [
 ];
 
 export default function SalesReportScreen() {
+  const theme = useThemePalette();
   const [period, setPeriod] = useState<Period>('30d');
 
   const { data, isLoading, error } = useQuery<SalesReportData>({
@@ -106,7 +108,7 @@ export default function SalesReportScreen() {
                 color={Colors.g2}
               />
               {cat.insight ? (
-                <Text style={styles.catInsight}>{cat.insight}</Text>
+                <Text style={[styles.catInsight, { color: theme.primary }]}>{cat.insight}</Text>
               ) : null}
             </View>
           ))}
@@ -122,7 +124,7 @@ export default function SalesReportScreen() {
                 <Text style={styles.saleName} numberOfLines={1}>{sale.name}</Text>
                 <Text style={styles.saleDate}>{sale.date}</Text>
               </View>
-              <Text style={styles.saleAmount}>
+              <Text style={[styles.saleAmount, { color: theme.primary }]}>
                 GHS {(sale.amount_pesawas / 100).toFixed(2)}
               </Text>
             </View>
@@ -157,7 +159,6 @@ const styles = StyleSheet.create({
   },
   catInsight: {
     ...Typography.bodySM,
-    color: Colors.g,
     fontStyle: 'italic',
     marginTop: -4,
     marginBottom: Spacing.s3,
@@ -175,5 +176,5 @@ const styles = StyleSheet.create({
   saleInfo: { flex: 1 },
   saleName: { ...Typography.bodyLG, color: Colors.t },
   saleDate: { ...Typography.bodySM, color: Colors.t2 },
-  saleAmount: { ...Typography.titleSM, color: Colors.g },
+  saleAmount: { ...Typography.titleSM },
 });

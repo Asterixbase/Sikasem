@@ -374,6 +374,7 @@ async def margins(
             Product.buy_price_pesawas,
             Category.name.label("cat_name"),
         )
+        .select_from(SaleItem)
         .join(Sale, SaleItem.sale_id == Sale.id)
         .join(Product, SaleItem.product_id == Product.id)
         .outerjoin(Category, Product.category_id == Category.id)
@@ -383,7 +384,8 @@ async def margins(
 
     margins_list = []
     cat_margins: dict[str, list[float]] = {}
-    product_margins: dict[str, list[float]] = {}
+    # Track (margins, emoji) per product name
+    product_data: dict[str, dict] = {}
 
     for row in rows:
         if (row.buy_price_pesawas or 0) > 0:
@@ -391,19 +393,25 @@ async def margins(
             margins_list.append(m)
             cat = row.cat_name or "Other"
             cat_margins.setdefault(cat, []).append(m)
-            product_margins.setdefault(row.name, []).append(m)
+            if row.name not in product_data:
+                product_data[row.name] = {"margins": [], "emoji": row.emoji or "📦"}
+            product_data[row.name]["margins"].append(m)
 
     avg = round(sum(margins_list) / len(margins_list), 1) if margins_list else 0.0
 
     cat_list = [
-        {"name": c, "avg_margin_pct": round(sum(ms) / len(ms), 1)}
+        {"name": c, "margin_pct": round(sum(ms) / len(ms), 1)}
         for c, ms in cat_margins.items()
     ]
     prod_list = [
-        {"name": p, "avg_margin_pct": round(sum(ms) / len(ms), 1)}
-        for p, ms in product_margins.items()
+        {
+            "name": name,
+            "emoji": d["emoji"],
+            "margin_pct": round(sum(d["margins"]) / len(d["margins"]), 1),
+        }
+        for name, d in product_data.items()
     ]
-    prod_list.sort(key=lambda x: x["avg_margin_pct"], reverse=True)
+    prod_list.sort(key=lambda x: x["margin_pct"], reverse=True)
 
     return {
         "period_days": days,
@@ -946,8 +954,10 @@ async def retail_insights(
         .where(Sale.shop_id == shop.id, Sale.created_at >= four_weeks_ago)
     )
     week_buckets: dict[int, int] = {0: 0, 1: 0, 2: 0, 3: 0}
+    now_utc = datetime.now(timezone.utc)
     for row in week_result.all():
-        days_ago = (datetime.now(timezone.utc) - row.created_at).days
+        created = row.created_at if row.created_at.tzinfo else row.created_at.replace(tzinfo=timezone.utc)
+        days_ago = max(0, (now_utc - created).days)  # clamp: future timestamps → bucket 0 (this week)
         bucket = min(days_ago // 7, 3)
         week_buckets[3 - bucket] += row.total_pesawas
     weekly_data = [{"label": f"W-{3 - i}", "value": week_buckets[i]} for i in range(4)]

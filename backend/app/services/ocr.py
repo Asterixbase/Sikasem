@@ -57,13 +57,60 @@ def _calc_confidence(values: list) -> float:
     return round(filled / len(values), 3)
 
 
+_MAX_IMAGE_BYTES = 4 * 1024 * 1024  # 4 MB — Claude hard limit is 5 MB
+
+
+def _compress_image_if_needed(raw_b64: str, media_type: str) -> tuple[str, str]:
+    """Compress image to stay under Claude's 5 MB limit.
+
+    Uses Pillow to progressively reduce JPEG quality until the base64-encoded
+    size is under _MAX_IMAGE_BYTES. Returns (new_b64, new_media_type).
+    """
+    raw_bytes = len(raw_b64.encode())
+    if raw_bytes <= _MAX_IMAGE_BYTES:
+        return raw_b64, media_type
+
+    try:
+        import io
+        from PIL import Image
+
+        img_data = base64.b64decode(raw_b64)
+        img = Image.open(io.BytesIO(img_data))
+
+        # Resize if very large (> 4000px on longest side)
+        max_dim = 3000
+        w, h = img.size
+        if max(w, h) > max_dim:
+            scale = max_dim / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+        # Try progressively lower JPEG quality until under limit
+        for quality in (85, 75, 65, 50):
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=quality, optimize=True)
+            compressed_b64 = base64.b64encode(buf.getvalue()).decode()
+            if len(compressed_b64.encode()) <= _MAX_IMAGE_BYTES:
+                logger.info(
+                    "Compressed image for Claude: original=%.1fMB quality=%d result=%.1fMB",
+                    raw_bytes / 1e6, quality, len(compressed_b64.encode()) / 1e6,
+                )
+                return compressed_b64, "image/jpeg"
+
+        logger.warning("Could not compress image below 4 MB — sending anyway")
+    except Exception as exc:
+        logger.warning("Image compression failed (%s) — sending original", exc)
+
+    return raw_b64, media_type
+
+
 async def _call_vision(image_base64: str, prompt: str, model: str) -> str:
     """Send an image + prompt to Claude and return the text response."""
     from anthropic import AsyncAnthropic
     from app.core.config import settings
 
-    raw_b64   = _strip_data_url(image_base64)
+    raw_b64    = _strip_data_url(image_base64)
     media_type = _detect_media_type(image_base64)
+    raw_b64, media_type = _compress_image_if_needed(raw_b64, media_type)
 
     client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     response = await client.messages.create(
@@ -88,15 +135,47 @@ async def _call_vision(image_base64: str, prompt: str, model: str) -> str:
 
 
 def _parse_json_response(text: str) -> dict:
-    """Extract JSON from Claude response, stripping markdown fences if present."""
+    """Extract JSON from Claude response robustly.
+
+    Handles:
+      - Clean JSON: '{"key": "value"}'
+      - Markdown fences: ```json\\n{...}\\n```
+      - Preamble text:  'Here is the data:\\n{...}'
+      - Mixed:          '```\\n{...}\\n```\\nNote: ...'
+    """
+    import re
     text = text.strip()
-    if text.startswith("```"):
+
+    # 1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+    if "```" in text:
         lines = text.splitlines()
-        text = "\n".join(
-            l for l in lines
-            if not l.startswith("```")
-        ).strip()
-    return json.loads(text)
+        text = "\n".join(l for l in lines if not l.startswith("```")).strip()
+
+    # 2. Try direct parse first (most common fast path)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Extract the first {...} block from anywhere in the text
+    match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Last resort: find first { and last } and try parsing that range
+    start = text.find('{')
+    end   = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("Could not parse JSON from Claude response: %.200s", text)
+    return {}
 
 
 # ── Invoice OCR ────────────────────────────────────────────────────────────────
@@ -283,24 +362,82 @@ async def extract_id_card(image_base64: str) -> dict:
 # ── Product label OCR ─────────────────────────────────────────────────────────
 
 _PRODUCT_LABEL_PROMPT = """\
-You are a product label reader for a Ghanaian retail shop inventory system.
-Examine the image carefully — it may be a product package, a shelf price tag, a sticker, or a handwritten label.
+You are a product label reader for a retail shop inventory system.
+The image may be a product package, a shelf price tag, a sticker, a handwritten label, or a photo taken in poor lighting.
 
-Extract every field you can read and return ONLY a valid JSON object with these fields:
+Your job: extract as much information as you can from ANY visible text in the image.
+Even if the image is blurry, partially cut off, or low quality — extract whatever you can read.
+Partial or uncertain values are better than null.
+
+Return ONLY a valid JSON object with these fields:
 
 {
-  "product_name": "Full product name including size/weight/variant (e.g. 'Indomie Instant Noodles Chicken 70g'). String or null.",
-  "brand":        "Brand name only (e.g. 'Indomie', 'Milo', 'Cowbell'). String or null.",
-  "sell_price":   "Retail selling price in GHS as a number (e.g. 7.00). Look for 'GH₵', 'GHS', 'Price:', 'P:', 'Retail:', 'MRP' or any visible price tag. Number or null.",
-  "quantity":     "If a count or pack size is visible (e.g. '12 pack', 'qty: 5', '48 units') return that integer. Otherwise null.",
-  "barcode":      "If a barcode number is visible (EAN-13 or similar digits), return as a string. Otherwise null."
+  "product_name": "Full product name including size/weight/variant if visible. Combine brand + product type + flavour + weight (e.g. 'Indomie Instant Noodles Chicken 70g'). If only a brand name is visible, use that. String or null.",
+  "brand":        "Brand name only (e.g. 'Indomie', 'Milo', 'Cowbell', 'Nestlé'). Infer from logo or product name if clearly recognisable. String or null.",
+  "sell_price":   "Retail selling price as a plain number. Search the ENTIRE image for any price: look for 'GH₵', 'GHS', 'Price:', 'P:', 'Retail:', 'MRP', '£', '$', '€' or any sticker with a number. Currency does not matter — extract the number. If image shows a price tag, that is the sell price. Number or null.",
+  "quantity":     "Pack count or quantity if visible (e.g. '12 pack' → 12, 'qty: 5' → 5). Integer or null.",
+  "barcode":      "Barcode digits if a barcode number string is visible in the image (not the barcode bars — the digits printed below). String or null."
 }
 
-Rules:
-- product_name: include brand + type + flavour + weight/volume if all visible.
-- sell_price: search the entire image for ANY price. Ghanaian formats: 'GH₵7.00', 'GHS 7.00', '7.00', 'P: 7'. If only a buy/cost price is visible, return that as sell_price.
-- Provide your best guess for all fields — a rough value beats null.
+Critical rules:
+- If ANY readable text appears in the image, fill in at least product_name with your best interpretation.
+- For sell_price: ANY visible price number counts. A price sticker, a handwritten number, a till receipt — all valid.
+- If the image shows a product you recognise (e.g. a Coca-Cola can, a pack of Indomie) even without clear text, use your knowledge to fill product_name and brand.
+- A best guess with low confidence beats null — the user can correct it.
 - Return ONLY the JSON object, no markdown, no explanation."""
+
+
+def _ocr_field(value, conf: float = 0.85) -> dict:
+    """Wrap an extracted value in the standard {value, confidence} shape."""
+    if value in (None, "", 0):
+        return {"value": None, "confidence": 0.0}
+    return {"value": value, "confidence": conf}
+
+
+def parse_sell_price(val) -> int | None:
+    """Convert a sell price value to pesawas, handling currency symbols and formats.
+    Accepts: 7.00, "7.00", "GH₵7.00", "GHS 7.00", "7,00", "P: 7", "MRP GHS 12.00", etc."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return int(round(float(val) * 100)) if float(val) > 0 else None
+    import re
+    # Strip currency prefixes/suffixes: GH₵, GHS, GH¢, P:, MRP:, ₵, etc.
+    s = re.sub(r'[^\d.,]', '', str(val).strip())
+    # Normalise comma-as-decimal separator: "7,00" → "7.00"
+    if s.count(',') == 1 and s.count('.') == 0:
+        s = s.replace(',', '.')
+    else:
+        s = s.replace(',', '')
+    try:
+        result = float(s)
+        return int(round(result * 100)) if result > 0 else None
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def build_label_result(data: dict) -> tuple[dict, float]:
+    """Parse Claude JSON into field dict. Confidence scored only on the 3 key fields
+    (product_name, brand, sell_price) — quantity/barcode are nice-to-have.
+    buy_price is never on a retail label so it is not requested or scored."""
+    sell_pesawas = parse_sell_price(data.get("sell_price"))
+
+    result = {
+        "product_name": _ocr_field(data.get("product_name")),
+        "brand":        _ocr_field(data.get("brand")),
+        "sell_price":   _ocr_field(sell_pesawas),
+        "buy_price":    _ocr_field(None),          # never on a label; kept for schema compat
+        "quantity":     _ocr_field(data.get("quantity")),
+        "barcode":      _ocr_field(data.get("barcode")),
+    }
+    # Score only the 3 key fields; buy_price is intentionally excluded
+    key_values = [
+        result["product_name"]["value"],
+        result["brand"]["value"],
+        result["sell_price"]["value"],
+    ]
+    confidence = _calc_confidence(key_values)
+    return result, confidence
 
 
 async def extract_product_label(image_base64: str) -> dict:
@@ -309,48 +446,38 @@ async def extract_product_label(image_base64: str) -> dict:
     if not settings.ANTHROPIC_API_KEY:
         return {"product_name": None, "brand": None, "sell_price": None, "buy_price": None, "quantity": None, "barcode": None, "confidence": 0.0}
 
-    def field(value, conf=0.85):
-        if value in (None, "", 0):
-            return {"value": None, "confidence": 0.0}
-        return {"value": value, "confidence": conf}
-
-    def _build_label_result(data: dict) -> tuple[dict, float]:
-        """Parse Claude JSON into field dict. Confidence scored only on the 3 key fields
-        (product_name, brand, sell_price) — quantity/barcode are nice-to-have.
-        buy_price is never on a retail label so it is not requested or scored."""
-        sell_p = data.get("sell_price")
-        sell_pesawas = int(round(float(sell_p) * 100)) if sell_p else None
-
-        result = {
-            "product_name": field(data.get("product_name")),
-            "brand":        field(data.get("brand")),
-            "sell_price":   field(sell_pesawas),
-            "buy_price":    field(None),          # never on a label; kept for schema compat
-            "quantity":     field(data.get("quantity")),
-            "barcode":      field(data.get("barcode")),
-        }
-        # Score only the 3 key fields; buy_price is intentionally excluded
-        key_values = [
-            result["product_name"]["value"],
-            result["brand"]["value"],
-            result["sell_price"]["value"],
-        ]
-        confidence = _calc_confidence(key_values)
-        return result, confidence
+    # Product labels: 2/3 key fields is sufficient — threshold 0.60 avoids unnecessary
+    # Sonnet calls when product_name + brand are read but price tag is absent.
+    _LABEL_THRESHOLD = 0.60
 
     try:
         raw  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _PRIMARY_MODEL)
         data = _parse_json_response(raw)
-        result, confidence = _build_label_result(data)
+        result, confidence = build_label_result(data)
 
         logger.info("OCR product label confidence=%.3f model=%s", confidence, _PRIMARY_MODEL)
+        if confidence == 0.0:
+            logger.warning(
+                "OCR label: all fields null after primary model. "
+                "Parsed data=%s | Raw response=%.500s",
+                data, raw,
+            )
 
-        if confidence < _FALLBACK_THRESHOLD:
-            logger.info("Low conf — Cloud Vision called (model=%s)", _FALLBACK_MODEL)
+        if confidence < _LABEL_THRESHOLD:
+            logger.info("Low conf — Cloud Vision called for label (model=%s)", _FALLBACK_MODEL)
             raw2  = await _call_vision(image_base64, _PRODUCT_LABEL_PROMPT, _FALLBACK_MODEL)
             data2 = _parse_json_response(raw2)
-            result, confidence = _build_label_result(data2)
+            result2, confidence2 = build_label_result(data2)
+            # Keep whichever attempt extracted more fields
+            if confidence2 >= confidence:
+                result, confidence = result2, confidence2
             logger.info("Cloud Vision product label confidence=%.3f", confidence)
+            if confidence == 0.0:
+                logger.warning(
+                    "OCR label: all fields null after fallback model too. "
+                    "Parsed data=%s | Raw response=%.500s",
+                    data2, raw2,
+                )
 
         result["confidence"] = confidence
         return result

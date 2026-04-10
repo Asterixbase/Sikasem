@@ -53,13 +53,14 @@ export default function SearchScreen() {
   const { data, isFetching } = useQuery({
     queryKey: ['search', debouncedQ, type],
     queryFn: () => salesApi.search({ q: debouncedQ, type }).then(r => r.data),
-    enabled: debouncedQ.trim().length > 0,
+    // Always load — backend returns recent transactions when query is empty
     staleTime: 30_000,
   });
 
   const results = data?.results ?? [];
   const hasQuery = debouncedQ.trim().length > 0;
   const noResults = hasQuery && !isFetching && results.length === 0;
+  const listTitle = hasQuery ? `Results for "${debouncedQ}"` : 'Recent transactions';
 
   return (
     <SafeAreaView style={styles.root}>
@@ -89,6 +90,11 @@ export default function SearchScreen() {
       </View>
 
       <ChipBar chips={TYPE_CHIPS} active={type} onChange={setType} />
+      {!isFetching && results.length > 0 && (
+        <View style={styles.listHeaderWrap}>
+          <Text style={styles.listHeader}>{listTitle}</Text>
+        </View>
+      )}
 
       {/* Loading */}
       {isFetching && (
@@ -130,15 +136,15 @@ export default function SearchScreen() {
                   <Text style={styles.emptyIcon}>🔍</Text>
                   <Text style={styles.emptyTitle}>No results for "{debouncedQ}"</Text>
                   <Text style={styles.emptyHint}>
-                    Try searching by product name, sale reference, or customer name.
+                    Try a product name, sale reference, or customer name.
                   </Text>
                 </>
               ) : (
                 <>
                   <Text style={styles.emptyIcon}>📋</Text>
-                  <Text style={styles.emptyTitle}>Search transactions</Text>
+                  <Text style={styles.emptyTitle}>No transactions yet</Text>
                   <Text style={styles.emptyHint}>
-                    Type a product name (e.g. "Indomie") or sale reference to find transactions.
+                    Load demo data from Settings → Developer Tools to populate this screen.
                   </Text>
                 </>
               )}
@@ -169,6 +175,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.s4, paddingVertical: Spacing.s2,
   },
   loadingText: { ...Typography.bodySM, color: Colors.t2 },
+
+  listHeaderWrap: { paddingHorizontal: Spacing.s4, paddingTop: Spacing.s3, paddingBottom: Spacing.s1 },
+  listHeader: { ...Typography.label, color: Colors.t2 },
 
   listContent: { paddingBottom: Spacing.s8 },
   emptyContainer: { flex: 1 },

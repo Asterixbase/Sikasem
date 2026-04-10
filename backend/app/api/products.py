@@ -1,5 +1,6 @@
 """
 Products router
+GET  /v1/products               — list (for quick-add / POS)
 GET  /v1/products/barcode/{code}
 GET  /v1/products/{id}
 PATCH /v1/products/{id}
@@ -10,7 +11,7 @@ import uuid
 import re
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -21,6 +22,37 @@ from app.models.inventory import StockMovement
 from app.schemas.product import ProductOut, ProductBarcodeOut, ProductCreateRequest, ProductUpdateRequest
 
 router = APIRouter()
+
+
+@router.get("")
+async def list_products(
+    q: str = Query(default=""),
+    limit: int = Query(default=50, le=200),
+    auth=Depends(get_current_shop),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lightweight product list for POS quick-add and search."""
+    _, shop = auth
+    stmt = select(Product).where(Product.shop_id == shop.id)
+    if q:
+        stmt = stmt.where(Product.name.ilike(f"%{q}%"))
+    stmt = stmt.order_by(Product.name).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+    return {
+        "items": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "emoji": p.emoji or "📦",
+                "sell_price_pesawas": p.sell_price_pesawas,
+                "buy_price_pesawas": p.buy_price_pesawas,
+                "current_stock": p.current_stock,
+                "barcode": p.barcode,
+            }
+            for p in rows
+        ],
+        "total": len(rows),
+    }
 
 
 def _urgency(stock: int, velocity: float) -> str:

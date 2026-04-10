@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { screenPad } from '@/utils/layout';
+import { useThemePalette } from '@/store/theme';
 
 interface Props {
   label: string;
@@ -14,12 +15,13 @@ interface Props {
 }
 
 export function HeroCard({ label, amount, value, subtitle, badge, style, children }: Props) {
+  const theme = useThemePalette();
   const display = amount !== undefined
     ? `GHS ${(amount / 100).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`
     : (value ?? '');
 
   return (
-    <View style={[styles.card, style]}>
+    <View style={[styles.card, { backgroundColor: theme.primary }, style]}>
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.amount}>{display}</Text>
       {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
@@ -31,7 +33,7 @@ export function HeroCard({ label, amount, value, subtitle, badge, style, childre
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.g, borderRadius: Radius.xl,
+    borderRadius: Radius.xl,
     padding: Spacing.s6, marginHorizontal: screenPad, marginVertical: Spacing.s4, ...Shadows.card,
   },
   label: { ...Typography.label, color: 'rgba(255,255,255,0.75)', marginBottom: 4 },

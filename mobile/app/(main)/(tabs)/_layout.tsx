@@ -83,7 +83,7 @@ export default function TabsLayout() {
         />
         <Tabs.Screen
           name="settings"
-          options={{ title: 'More', tabBarIcon: ({ focused }) => <TabIcon label="☰" focused={focused} /> }}
+          options={{ title: 'Settings', tabBarIcon: ({ focused }) => <TabIcon label="⚙️" focused={focused} /> }}
         />
       </Tabs>
     </View>
@@ -108,7 +108,9 @@ const styles = StyleSheet.create({
   fab: {
     width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
     backgroundColor: Colors.g, justifyContent: 'center', alignItems: 'center',
-    marginBottom: Platform.OS === 'ios' ? 12 : 20,
+    // Centre the FAB vertically within the tab bar by pushing it up by half
+    // the difference between FAB height and tab bar content height.
+    marginBottom: Platform.OS === 'ios' ? 16 : 18,
     shadowColor: Colors.g, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },

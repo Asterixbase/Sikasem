@@ -9,6 +9,7 @@ import {
   ScreenHeader, Button, FormInput, Badge,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 
 type IdType = 'ghana_card' | 'passport' | 'voter';
 
@@ -19,6 +20,7 @@ const ID_TYPE_LABELS: Record<IdType, string> = {
 };
 
 export default function CreditNewScreen() {
+  const theme = useThemePalette();
   const [name, setName] = useState('');
   const [idType, setIdType] = useState<IdType>('ghana_card');
   const [idNumber, setIdNumber] = useState('');
@@ -86,9 +88,9 @@ export default function CreditNewScreen() {
         </View>
 
         {/* Camera scan box */}
-        <Pressable style={styles.scanBox} onPress={handleScanId}>
+        <Pressable style={[styles.scanBox, { borderColor: theme.primary, backgroundColor: theme.bgDeep }]} onPress={handleScanId}>
           <Text style={styles.scanIcon}>📷</Text>
-          <Text style={styles.scanLabel}>Ghana Card / Passport</Text>
+          <Text style={[styles.scanLabel, { color: theme.primary }]}>Ghana Card / Passport</Text>
           <Text style={styles.scanSub}>Tap to scan ID document</Text>
         </Pressable>
 
@@ -113,7 +115,10 @@ export default function CreditNewScreen() {
                 <Pressable
                   key={t}
                   onPress={() => setIdType(t)}
-                  style={[styles.idTypeBtn, idType === t && styles.idTypeBtnActive]}
+                  style={[
+                    styles.idTypeBtn,
+                    idType === t && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
                 >
                   <Text style={[styles.idTypeBtnText, idType === t && styles.idTypeBtnTextActive]}>
                     {ID_TYPE_LABELS[t]}
@@ -172,15 +177,13 @@ const styles = StyleSheet.create({
     margin: Spacing.s4,
     padding: Spacing.s6,
     borderWidth: 2,
-    borderColor: Colors.g,
     borderStyle: 'dashed',
     borderRadius: Radius.xl,
     alignItems: 'center',
-    backgroundColor: Colors.gx,
     gap: Spacing.s2,
   },
   scanIcon: { fontSize: 32 },
-  scanLabel: { ...Typography.titleSM, color: Colors.g },
+  scanLabel: { ...Typography.titleSM },
   scanSub: { ...Typography.bodySM, color: Colors.t2 },
   dividerText: {
     ...Typography.bodySM, color: Colors.t2,
@@ -195,7 +198,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.gy2,
     alignItems: 'center', backgroundColor: Colors.w,
   },
-  idTypeBtnActive: { backgroundColor: Colors.g, borderColor: Colors.g },
+  idTypeBtnActive: {},
   idTypeBtnText: { ...Typography.badge, color: Colors.t2 },
   idTypeBtnTextActive: { color: Colors.w },
 });

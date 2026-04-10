@@ -8,6 +8,7 @@ import {
   LoadingState, ErrorState,
 } from '@/components';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
+import { useThemePalette } from '@/store/theme';
 
 // Matches GET /credit/collections CollectionItem schema
 interface CollectionRow {
@@ -38,6 +39,7 @@ function getInitials(name: string): string {
 }
 
 export default function CollectionLogsScreen() {
+  const theme = useThemePalette();
   const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -113,8 +115,8 @@ export default function CollectionLogsScreen() {
           collections.map((col: CollectionRow) => (
             <View key={col.id} style={styles.row}>
               {/* Avatar */}
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{col.initials || getInitials(col.name)}</Text>
+              <View style={[styles.avatar, { backgroundColor: theme.bgLight }]}>
+                <Text style={[styles.avatarText, { color: theme.primary }]}>{col.initials || getInitials(col.name)}</Text>
               </View>
 
               {/* Name + ref */}
@@ -178,11 +180,10 @@ const styles = StyleSheet.create({
   },
   avatar: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: Colors.gl,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  avatarText: { ...Typography.bodyLG, color: Colors.g, fontWeight: '800' },
+  avatarText: { ...Typography.bodyLG, fontWeight: '800' },
   rowMeta: { flex: 1 },
   rowName: { ...Typography.bodyLG, color: Colors.t },
   rowRef: { ...Typography.micro, color: Colors.t2, marginTop: 1 },

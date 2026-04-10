@@ -62,7 +62,7 @@ async def require_owner(
     user, shop = await get_current_shop(credentials=credentials, db=db)
     payload = decode_jwt(credentials.credentials)
     role = payload.get("role", "staff")
-    if role != "owner":
+    if role not in ("owner", "superuser"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Treasury access is restricted to shop owners.",

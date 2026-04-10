@@ -7,15 +7,22 @@ import { dashboardApi } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
 import { SikasemLogo, MetricTile, LoadingState, ErrorState } from '@/components';
 import { useThemePalette } from '@/store/theme';
+import { useTierStore, type TierFeature } from '@/store/tier';
 import { fmtTime, fmtDate } from '@/utils/date';
 
-const QUICK_ACTIONS = [
-  { icon: '📷', label: 'Scan',     route: '/(main)/scan' },
-  { icon: '💰', label: 'Sell',     route: '/(main)/sale' },
-  { icon: '🧾', label: 'Tax',      route: '/(main)/tax' },
-  { icon: '💳', label: 'Credit',   route: '/(main)/credit-list' },
-  { icon: '📊', label: 'Reports',  route: '/(main)/analytics' },
-  { icon: '🏦', label: 'Treasury', route: '/(main)/treasury' },
+// All quick actions — each tagged with the tier feature required (null = always visible)
+const ALL_QUICK_ACTIONS: Array<{ icon: string; label: string; route: string; feature: TierFeature | null }> = [
+  { icon: '📷', label: 'Scan',      route: '/(main)/scan',         feature: null },
+  { icon: '💰', label: 'Sell',      route: '/(main)/sale',         feature: null },
+  { icon: '💳', label: 'Credit',    route: '/(main)/credit-list',  feature: null },
+  { icon: '🤖', label: 'Ask Sika',  route: '/(main)/ai-chat',      feature: null },
+  { icon: '📊', label: 'Analytics', route: '/(main)/analytics',    feature: 'reports' },
+  { icon: '📋', label: 'Reports',   route: '/(main)/daily-reports',feature: 'daily_reports' },
+  { icon: '🔁', label: 'Reorder',   route: '/(main)/reorder',      feature: 'reorder' },
+  { icon: '📄', label: 'OCR Scan',  route: '/(main)/bulk',         feature: 'ocr' },
+  { icon: '🏦', label: 'Treasury',  route: '/(main)/treasury',     feature: 'treasury' },
+  { icon: '🧾', label: 'Tax',       route: '/(main)/tax',          feature: 'tax' },
+  { icon: '🔍', label: 'Search',    route: '/(main)/search',       feature: 'search' },
 ];
 
 const PAYMENT_ICONS: Record<string, string> = {
@@ -26,6 +33,10 @@ const PAYMENT_ICONS: Record<string, string> = {
 
 export default function DashScreen() {
   const theme = useThemePalette();
+  const { can, logoVariant } = useTierStore();
+
+  // Filter quick actions based on the active tier (superuser override applies via can())
+  const quickActions = ALL_QUICK_ACTIONS.filter(a => a.feature === null || can(a.feature));
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.get().then(r => r.data),
@@ -44,15 +55,8 @@ export default function DashScreen() {
     <SafeAreaView style={styles.safe}>
       {/* App bar */}
       <View style={styles.appBar}>
-        <SikasemLogo size="sm" layout="row" showTagline={false} />
+        <SikasemLogo size="sm" layout="row" showTagline={false} variant={logoVariant} color={theme.primary} />
         <View style={styles.appBarRight}>
-          <Pressable
-            onPress={() => router.push('/(main)/(tabs)/settings' as any)}
-            style={styles.cogBtn}
-            hitSlop={8}
-          >
-            <Text style={styles.cogIcon}>⚙️</Text>
-          </Pressable>
           <Pressable
             onPress={() => router.push('/(main)/(tabs)/settings' as any)}
             style={[styles.avatar, { backgroundColor: theme.primary }]}
@@ -199,11 +203,11 @@ export default function DashScreen() {
           </View>
         )}
 
-        {/* Quick actions */}
+        {/* Quick actions — tier-gated */}
         <View style={styles.actionsSection}>
           <Text style={styles.sectionTitle}>Quick actions</Text>
           <View style={styles.actionsGrid}>
-            {QUICK_ACTIONS.map(a => (
+            {quickActions.map(a => (
               <Pressable
                 key={a.route}
                 style={styles.actionBtn}
@@ -230,8 +234,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.gy2,
   },
   appBarRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s2 },
-  cogBtn: { padding: 4 },
-  cogIcon: { fontSize: 20 },
   avatar: {
     width: 34, height: 34, borderRadius: 17,
     alignItems: 'center', justifyContent: 'center',
