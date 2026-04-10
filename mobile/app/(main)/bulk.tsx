@@ -19,6 +19,7 @@ export default function BulkScreen() {
     initialMode === 'ocr' ? 'LABEL OCR' : 'BULK COUNT'
   );
   const [capturing, setCapturing] = useState(false);
+  const [cameraActive, setCameraActive] = useState(true);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [voiceText, setVoiceText] = useState('');
   const cameraRef = useRef<CameraView>(null);
@@ -48,11 +49,13 @@ export default function BulkScreen() {
       product_name: name,
       confidence_scores: { product_name: 90, quantity: qty != null ? 95 : 0, unit_price: 0 },
     });
-    // Dismiss keyboard first, then close modal, then wait for ALL animations to finish
-    // before navigating — avoids CameraView native crash during modal slide-out
+    // 1. Stop camera hardware FIRST — eliminates native teardown crash
+    setCameraActive(false);
+    // 2. Dismiss keyboard and close modal
     Keyboard.dismiss();
     setShowVoiceModal(false);
     setVoiceText('');
+    // 3. Navigate only after all animations (modal slide-out, keyboard) complete
     InteractionManager.runAfterInteractions(() => {
       router.replace({ pathname: '/(main)/bulk-result', params: { data: navData } });
     });
@@ -108,7 +111,7 @@ export default function BulkScreen() {
 
   return (
     <View style={styles.root}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill}>
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} active={cameraActive}>
         {/* 4×4 grid overlay */}
         <View style={styles.gridOverlay} pointerEvents="none">
           {[1, 2, 3].map(i => (
