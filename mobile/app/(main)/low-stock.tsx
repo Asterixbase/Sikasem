@@ -25,6 +25,7 @@ export default function LowStockScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ['low-stock', urgency],
     queryFn: () => dashboardApi.lowStock(urgency as any).then(r => r.data),
+    staleTime: 60_000,
   });
 
   const items = data?.items ?? [];

@@ -274,7 +274,7 @@ function EodPanel() {
           </Text>
           <Text style={styles.reconcileBannerSub}>
             POS sold {data.reconciliation.pos_units_sold} units · stock log moved {data.reconciliation.stock_units_moved}
-            {!balanced && ` · delta: ${data.reconciliation.delta > 0 ? '+' : ''}${data.reconciliation.delta}`}
+            {!balanced && ` · Difference: ${data.reconciliation.delta > 0 ? '+' : ''}${data.reconciliation.delta}`}
           </Text>
         </View>
       </View>

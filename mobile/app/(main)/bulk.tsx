@@ -41,14 +41,18 @@ export default function BulkScreen() {
   const handleVoiceConfirm = () => {
     const { name, qty } = parseVoiceText(voiceText);
     if (!name) return;
-    const data = {
+    const navData = JSON.stringify({
       detected_qty: qty ?? 0,
       strategy_label: 'Voice Count',
+      product_name: name,
       confidence_scores: { product_name: 90, quantity: qty != null ? 95 : 0, unit_price: 0 },
-    };
+    });
+    // Close modal first — CameraView tears down if we navigate while Modal is animating
     setShowVoiceModal(false);
     setVoiceText('');
-    router.push({ pathname: '/(main)/bulk-result', params: { data: JSON.stringify(data), product_name: name } });
+    setTimeout(() => {
+      router.replace({ pathname: '/(main)/bulk-result', params: { data: navData } });
+    }, 350);
   };
 
   const handleCapture = async () => {

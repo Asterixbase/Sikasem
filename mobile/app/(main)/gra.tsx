@@ -1,35 +1,48 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Alert, Linking, Pressable } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useQuery } from '@tanstack/react-query';
 import { taxApi } from '@/api';
 import { API_BASE, getAccessToken } from '@/api';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants';
-import { ScreenHeader, SafeScrollView, Button, LoadingState, ErrorState } from '@/components';
+import { ScreenHeader, SafeScrollView, Button, LoadingState } from '@/components';
+import { useThemePalette } from '@/store/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { screenPad } from '@/utils/layout';
 
+const GRA_PORTAL = 'https://etax.gra.gov.gh';
+
+const STEPS = [
+  { n: '1', text: 'Download your VAT CSV below' },
+  { n: '2', text: 'Open the GRA e-Tax portal and log in' },
+  { n: '3', text: 'Select "VAT Return" → "File Return"' },
+  { n: '4', text: 'Upload the CSV and submit' },
+];
+
 export default function GraScreen() {
+  const theme = useThemePalette();
+  const insets = useSafeAreaInsets();
   const [csvLoading, setCsvLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['tax-dashboard'],
     queryFn: () => taxApi.dashboard().then(r => r.data),
+    staleTime: 60_000,
   });
 
   if (isLoading) return <LoadingState message="Loading VAT summary…" />;
-  if (error) return <ErrorState message="Could not load tax data" />;
 
   const d = data ?? {};
   const today = new Date();
-  const year = today.getFullYear();
+  const year  = today.getFullYear();
   const month = today.getMonth() + 1;
 
-  const taxableSales: number = d.taxable_sales_pesawas ?? 980000;
-  const outputVat: number = d.output_vat_pesawas ?? 147000;
-  const inputVat: number = d.input_vat_pesawas ?? 62000;
-  const netVat: number = d.net_vat_pesawas ?? 85000;
+  const taxableSales: number = d.taxable_sales_pesawas ?? 0;
+  const outputVat: number    = d.output_vat_pesawas    ?? 0;
+  const inputVat: number     = d.input_vat_pesawas     ?? 0;
+  const netVat: number       = d.net_vat_pesawas        ?? 0;
 
   const tableRows = [
     { label: 'Taxable Sales',   amount: taxableSales },
@@ -42,7 +55,7 @@ export default function GraScreen() {
     setCsvLoading(true);
     try {
       const token = await getAccessToken();
-      const url = `${API_BASE}/tax/periods/${year}/${month}/export/csv`;
+      const url  = `${API_BASE}/tax/periods/${year}/${String(month).padStart(2,'0')}/export/csv`;
       const dest = FileSystem.documentDirectory + `sikasem_vat_${year}_${String(month).padStart(2,'0')}.csv`;
 
       const result = await FileSystem.downloadAsync(url, dest, {
@@ -71,8 +84,6 @@ export default function GraScreen() {
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
     try {
-      const token = await getAccessToken();
-      // Build a simple HTML audit report and share it as a PDF
       const html = buildAuditHtml({ year, month, taxableSales, outputVat, inputVat, netVat, invoices: d.recent_invoices ?? [] });
       const htmlPath = FileSystem.documentDirectory + 'sikasem_vat_audit.html';
       await FileSystem.writeAsStringAsync(htmlPath, html, { encoding: FileSystem.EncodingType.UTF8 });
@@ -87,22 +98,67 @@ export default function GraScreen() {
         Alert.alert('Downloaded', 'VAT audit report ready to share');
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not generate PDF');
+      Alert.alert('Error', e?.message ?? 'Could not generate report');
     } finally {
       setPdfLoading(false);
     }
   };
 
+  const handleSubmitOnPortal = async () => {
+    // 1. Download the CSV so they have it ready, then open the portal
+    try {
+      const supported = await Linking.canOpenURL(GRA_PORTAL);
+      if (!supported) {
+        Alert.alert('Cannot open browser', 'Please visit etax.gra.gov.gh manually.');
+        return;
+      }
+      Alert.alert(
+        'Opening GRA e-Tax Portal',
+        'Download your VAT CSV first if you haven\'t already, then upload it on the GRA portal under VAT → File Return.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Portal',
+            onPress: () => Linking.openURL(GRA_PORTAL),
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not open portal');
+    }
+  };
+
   return (
     <View style={styles.root}>
-      <ScreenHeader title="GRA VAT Export" />
-      <SafeScrollView>
-        <View style={styles.successCard}>
-          <Text style={styles.successTitle}>Return ready for filing</Text>
-          <Text style={styles.successSub}>{d.invoice_count ?? 14} invoices · no errors ✓</Text>
+      <ScreenHeader title="GRA VAT Filing" />
+      <SafeScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+
+        {/* Return status card */}
+        <View style={[styles.readyCard, { backgroundColor: theme.primary }]}>
+          <Text style={styles.readyTitle}>✓ Return ready for filing</Text>
+          <Text style={styles.readySub}>
+            {d.invoice_count ?? 0} invoices · GHS {(netVat / 100).toFixed(2)} net VAT payable
+          </Text>
         </View>
 
-        <Text style={styles.sectionHeader}>VAT SUMMARY OVERVIEW</Text>
+        {/* Step-by-step guide */}
+        <Text style={styles.sectionHeader}>HOW TO SUBMIT ELECTRONICALLY</Text>
+        <View style={styles.stepsCard}>
+          {STEPS.map((s, i) => (
+            <View key={s.n}>
+              <View style={styles.stepRow}>
+                <View style={[styles.stepBadge, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.stepN}>{s.n}</Text>
+                </View>
+                <Text style={styles.stepText}>{s.text}</Text>
+              </View>
+              {i < STEPS.length - 1 && <View style={styles.stepLine} />}
+            </View>
+          ))}
+        </View>
+
+        {/* VAT Summary */}
+        <Text style={styles.sectionHeader}>VAT SUMMARY</Text>
         <View style={styles.card}>
           {tableRows.map((row, i) => (
             <View key={i}>
@@ -117,6 +173,39 @@ export default function GraScreen() {
           ))}
         </View>
 
+        {/* Actions */}
+        <View style={styles.actions}>
+          {/* Primary: Open GRA portal */}
+          <Pressable
+            style={[styles.portalBtn, { backgroundColor: theme.primary }]}
+            onPress={handleSubmitOnPortal}
+          >
+            <Text style={styles.portalBtnIcon}>🏛️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.portalBtnLabel}>Submit on GRA e-Tax Portal</Text>
+              <Text style={styles.portalBtnSub}>Opens etax.gra.gov.gh</Text>
+            </View>
+            <Text style={styles.portalBtnArrow}>›</Text>
+          </Pressable>
+
+          {/* Secondary: Download CSV (to upload to portal) */}
+          <Button
+            label={csvLoading ? 'Downloading…' : '⬇  Download VAT CSV'}
+            variant="primary"
+            loading={csvLoading}
+            onPress={handleDownloadCsv}
+          />
+
+          {/* Tertiary: PDF Audit */}
+          <Button
+            label={pdfLoading ? 'Generating…' : '⬇  Download PDF Audit Report'}
+            variant="secondary"
+            loading={pdfLoading}
+            onPress={handleDownloadPdf}
+          />
+        </View>
+
+        {/* CSV Preview */}
         <Text style={styles.sectionHeader}>CSV PREVIEW</Text>
         <View style={styles.csvBlock}>
           <Text style={styles.csvTitle}>Part A — Sales</Text>
@@ -124,16 +213,9 @@ export default function GraScreen() {
         </View>
         <View style={styles.csvBlock}>
           <Text style={styles.csvTitle}>Part B — Purchases</Text>
-          <Text style={styles.csvCode}>{`TIN,InvoiceNo,Date,TaxableAmt,InputVAT\nC005678,INV-ACC-001,${year}-${String(month).padStart(2,'0')}-26,791.67,118.75\nC005679,INV-KOJ-001,${year}-${String(month).padStart(2,'0')}-24,316.67,47.50`}</Text>
+          <Text style={styles.csvCode}>{`TIN,InvoiceNo,Date,TaxableAmt,InputVAT\nC005678,INV-ACC-001,${year}-${String(month).padStart(2,'0')}-26,791.67,118.75`}</Text>
         </View>
 
-        <View style={styles.netBanner}>
-          <Text style={styles.netBannerText}>GHS {(netVat / 100).toFixed(2)} Net VAT Payable</Text>
-        </View>
-
-        <Button label={csvLoading ? 'Downloading…' : '⬇ Download CSV'} variant="primary" loading={csvLoading} onPress={handleDownloadCsv} />
-        <Button label={pdfLoading ? 'Generating…' : '⬇ Download PDF Audit'} variant="secondary" loading={pdfLoading} onPress={handleDownloadPdf} />
-        <Button label="Open GRA e-Tax Portal" variant="secondary" onPress={() => Linking.openURL('https://etax.gra.gov.gh')} />
       </SafeScrollView>
     </View>
   );
@@ -166,16 +248,31 @@ th{background:#F8FAFC;font-weight:600;}
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.gy },
-  successCard: {
-    margin: screenPad, backgroundColor: Colors.g,
-    borderRadius: Radius.lg, padding: Spacing.s5, ...Shadows.card,
+
+  readyCard: {
+    margin: screenPad, borderRadius: Radius.xl, padding: Spacing.s5, ...Shadows.card,
   },
-  successTitle: { ...Typography.titleMD, color: Colors.w },
-  successSub: { ...Typography.bodyMD, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  readyTitle: { ...Typography.titleMD, color: Colors.w },
+  readySub:   { ...Typography.bodyMD, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+
   sectionHeader: {
     ...Typography.label, color: Colors.t2,
     paddingHorizontal: screenPad, paddingTop: Spacing.s4, paddingBottom: Spacing.s2,
   },
+
+  stepsCard: {
+    marginHorizontal: screenPad, backgroundColor: Colors.w,
+    borderRadius: Radius.lg, padding: Spacing.s5, ...Shadows.card,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s3 },
+  stepBadge: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  stepN:    { ...Typography.badge, color: Colors.w, fontWeight: '800' },
+  stepText: { ...Typography.bodyMD, color: Colors.t, flex: 1 },
+  stepLine: { height: 16, width: 1, backgroundColor: Colors.gy2, marginLeft: 14, marginVertical: 2 },
+
   card: {
     marginHorizontal: screenPad, backgroundColor: Colors.w,
     borderRadius: Radius.lg, overflow: 'hidden', ...Shadows.card,
@@ -184,19 +281,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', padding: Spacing.s4,
   },
-  tableLabel: { ...Typography.bodyMD, color: Colors.t2 },
+  tableLabel:  { ...Typography.bodyMD, color: Colors.t2 },
   tableAmount: { ...Typography.bodyLG, color: Colors.t },
-  tableBold: { fontWeight: '700', color: Colors.g },
-  divider: { height: 1, backgroundColor: Colors.gy2, marginHorizontal: Spacing.s4 },
+  tableBold:   { fontWeight: '700', color: Colors.g },
+  divider:     { height: 1, backgroundColor: Colors.gy2, marginHorizontal: Spacing.s4 },
+
+  actions: { paddingHorizontal: screenPad, paddingTop: Spacing.s4, gap: Spacing.s2 },
+
+  portalBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.s3,
+    borderRadius: Radius.xl, padding: Spacing.s4,
+    marginBottom: Spacing.s2, ...Shadows.card,
+  },
+  portalBtnIcon:  { fontSize: 28 },
+  portalBtnLabel: { ...Typography.titleSM, color: Colors.w },
+  portalBtnSub:   { ...Typography.bodySM, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  portalBtnArrow: { fontSize: 22, color: Colors.w, fontWeight: '700' },
+
   csvBlock: {
     marginHorizontal: screenPad, marginBottom: Spacing.s3,
     backgroundColor: Colors.csvBg, borderRadius: Radius.md, padding: Spacing.s4,
   },
   csvTitle: { ...Typography.label, color: Colors.csvText, marginBottom: 8 },
-  csvCode: { fontFamily: 'Courier New', fontSize: 11, color: Colors.csvText, lineHeight: 18 },
-  netBanner: {
-    margin: screenPad, backgroundColor: Colors.g,
-    borderRadius: Radius.md, padding: Spacing.s4, alignItems: 'center',
-  },
-  netBannerText: { ...Typography.titleMD, color: Colors.w },
+  csvCode:  { fontFamily: 'Courier New', fontSize: 11, color: Colors.csvText, lineHeight: 18 },
 });

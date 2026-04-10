@@ -21,7 +21,8 @@ export default function CreditStep2Screen() {
   }>();
 
   const [amountGHS, setAmountGHS] = useState('');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState('');       // API format: YYYY-MM-DD
+  const [dueDateDisplay, setDueDateDisplay] = useState(''); // Display format: DD-MM-YYYY
   const [momoPhone, setMomoPhone] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -67,11 +68,26 @@ export default function CreditStep2Screen() {
     mutation.mutate();
   };
 
-  // Quick date shortcuts for due date
-  const addDays = (days: number): string => {
+  // Quick date shortcuts — sets both display (DD-MM-YYYY) and API (YYYY-MM-DD) state
+  const setDateShortcut = (days: number) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setDueDate(`${yyyy}-${mm}-${dd}`);           // API format
+    setDueDateDisplay(`${dd}-${mm}-${yyyy}`);    // Display format
+  };
+
+  // Handle manual date entry in DD-MM-YYYY — convert to YYYY-MM-DD for API
+  const handleDueDateChange = (text: string) => {
+    setDueDateDisplay(text);
+    const m = text.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (m) {
+      setDueDate(`${m[3]}-${m[2]}-${m[1]}`);
+    } else {
+      setDueDate('');
+    }
   };
 
   return (
@@ -119,10 +135,11 @@ export default function CreditStep2Screen() {
           <View style={styles.dateFieldWrap}>
             <Text style={styles.dateLabel}>DUE DATE</Text>
             <FormInput
-              placeholder="YYYY-MM-DD"
-              value={dueDate}
-              onChangeText={setDueDate}
+              placeholder="DD-MM-YYYY"
+              value={dueDateDisplay}
+              onChangeText={handleDueDateChange}
               error={errors.dueDate}
+              keyboardType="numbers-and-punctuation"
             />
             <View style={styles.dateShortcuts}>
               {[
@@ -133,7 +150,7 @@ export default function CreditStep2Screen() {
                 <Pressable
                   key={s.days}
                   style={[styles.dateShortcut, { backgroundColor: theme.bgLight }]}
-                  onPress={() => setDueDate(addDays(s.days))}
+                  onPress={() => setDateShortcut(s.days)}
                 >
                   <Text style={[styles.dateShortcutText, { color: theme.primary }]}>{s.label}</Text>
                 </Pressable>

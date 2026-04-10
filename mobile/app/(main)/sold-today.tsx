@@ -9,9 +9,10 @@ import { screenPad } from '@/utils/layout';
 
 export default function SoldTodayScreen() {
   const [sort, setSort] = useState<'rev' | 'units' | 'margin'>('rev');
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['sold-today', sort],
     queryFn: () => dashboardApi.soldToday(sort).then(r => r.data),
+    staleTime: 60_000,
   });
 
   return (
@@ -29,7 +30,7 @@ export default function SoldTodayScreen() {
         active={sort}
         onChange={v => setSort(v as any)}
       />
-      {isLoading ? <LoadingState /> : (
+      {isLoading && !data ? <LoadingState /> : (
         <FlatList
           data={data?.items ?? []}
           keyExtractor={i => i.product_id}

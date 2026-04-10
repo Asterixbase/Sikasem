@@ -49,6 +49,7 @@ export default function MarginsScreen() {
   const { data, isLoading, error } = useQuery<MarginsData>({
     queryKey: ['margins', period],
     queryFn: () => analyticsApi.margins(parseInt(period)).then(r => r.data),
+    staleTime: 60_000,
   });
 
   if (isLoading) return <LoadingState message="Loading margins…" />;
