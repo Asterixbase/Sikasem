@@ -48,7 +48,7 @@ export default function BulkResultScreen() {
         type: 'stock_in',
         source: ocrData.product_id ? 'bulk_ocr' : 'voice_count',
       }),
-    onSuccess: () => router.replace('/(main)/dash'),
+    onSuccess: () => router.replace('/(main)/(tabs)/dash'),
     onError: (e: any) =>
       Alert.alert('Failed', e?.response?.data?.detail ?? 'Could not record movement'),
   });

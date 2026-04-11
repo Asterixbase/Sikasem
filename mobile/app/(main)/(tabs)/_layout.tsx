@@ -14,15 +14,17 @@ import { useThemePalette } from '@/store/theme';
 function ScanFAB({ onPress }: BottomTabBarButtonProps) {
   const theme = useThemePalette();
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
-      activeOpacity={0.85}
-      accessibilityRole="button"
-      accessibilityLabel="Scan"
-    >
-      <Text style={styles.fabIcon}>⊙</Text>
-    </TouchableOpacity>
+    <View style={styles.fabWrap}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Scan"
+      >
+        <Text style={styles.fabIcon}>⊙</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -105,11 +107,14 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 11, fontWeight: '500' },
   tabIcon: { fontSize: 20, opacity: 0.6 },
   tabIconActive: { opacity: 1 },
+  fabWrap: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+  },
   fab: {
     width: FAB_SIZE, height: FAB_SIZE, borderRadius: 14,
-    backgroundColor: Colors.g, justifyContent: 'center', alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
     marginBottom: Platform.OS === 'ios' ? 16 : 18,
-    shadowColor: Colors.g, shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
   fabIcon: { fontSize: 26, color: Colors.w, lineHeight: 30 },
