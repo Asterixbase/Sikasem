@@ -40,15 +40,25 @@ export default function BulkResultScreen() {
     unit_price: 79,
   };
 
+  // For voice count there is no product_id — skip the stock API and go straight
+  // to dashboard. The count is confirmed visually; user can adjust via inv-adjust.
+  const handleConfirm = () => {
+    if (!ocrData.product_id) {
+      router.dismissAll();
+      return;
+    }
+    mutation.mutate();
+  };
+
   const mutation = useMutation({
     mutationFn: () =>
       api.post('/stock/movements', {
-        product_id: ocrData.product_id ?? '',
+        product_id: ocrData.product_id,
         quantity: overrideQty,
         type: 'stock_in',
-        source: ocrData.product_id ? 'bulk_ocr' : 'voice_count',
+        source: 'bulk_ocr',
       }),
-    onSuccess: () => router.replace('/(main)/(tabs)/dash'),
+    onSuccess: () => router.dismissAll(),
     onError: (e: any) =>
       Alert.alert('Failed', e?.response?.data?.detail ?? 'Could not record movement'),
   });
@@ -115,7 +125,7 @@ export default function BulkResultScreen() {
           label={`Confirm ${overrideQty} pcs`}
           variant="primary"
           loading={mutation.isPending}
-          onPress={() => mutation.mutate()}
+          onPress={handleConfirm}
           style={styles.confirmBtn}
         />
         <Button
