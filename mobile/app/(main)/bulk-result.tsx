@@ -40,11 +40,17 @@ export default function BulkResultScreen() {
     unit_price: 79,
   };
 
-  // For voice count there is no product_id — skip the stock API and go straight
-  // to dashboard. The count is confirmed visually; user can adjust via inv-adjust.
+  // For voice count there is no product_id — route to scan-result so the user
+  // can assign a category and create the product with the confirmed quantity.
   const handleConfirm = () => {
     if (!ocrData.product_id) {
-      router.dismissAll();
+      router.push({
+        pathname: '/(main)/scan-result',
+        params: {
+          name: productName,
+          initialStock: String(overrideQty),
+        },
+      });
       return;
     }
     mutation.mutate();

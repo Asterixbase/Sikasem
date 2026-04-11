@@ -10,20 +10,27 @@ import { useOcrLabelStore } from '@/store/ocrLabel';
 import { useCategoryPickStore } from '@/store/categoryPick';
 
 export default function ScanResultScreen() {
-  const { barcode } = useLocalSearchParams<{ barcode: string }>();
+  const { barcode, name: nameParam, initialStock } = useLocalSearchParams<{
+    barcode?: string;
+    name?: string;
+    initialStock?: string;
+  }>();
 
-  // Form fields
-  const [name, setName]             = useState('');
+  // Form fields — pre-fill from voice count params if provided
+  const [name, setName]             = useState(nameParam ?? '');
   const [brand, setBrand]           = useState('');
   const [sellPrice, setSellPrice]   = useState('');
   const [buyPrice, setBuyPrice]     = useState('');
-  const [stock, setStock]           = useState('1');
+  const [stock, setStock]           = useState(initialStock ?? '1');
   const [categoryId, setCategoryId] = useState('');
+
+  const isVoiceEntry = !barcode && !!nameParam; // came from voice count, not scan
+  const overrideQtyLabel = initialStock ? `${initialStock} pcs confirmed` : '';
 
   const [suggestion, setSuggestion]     = useState<{ name: string; confidence: number; category_id?: string } | null>(null);
   const [saving, setSaving]             = useState(false);
-  const [ocrDone, setOcrDone]           = useState(false);
-  const [ocrAttempted, setOcrAttempted] = useState(false);
+  const [ocrDone, setOcrDone]           = useState(isVoiceEntry); // voice entry is already "done"
+  const [ocrAttempted, setOcrAttempted] = useState(isVoiceEntry);
   const [existingProductId, setExistingProductId] = useState<string | null>(null);
 
   // Category suggestion debounce timer
@@ -35,7 +42,8 @@ export default function ScanResultScreen() {
   // The "launchedForBarcode" key lives in Zustand so it survives component
   // remounts that happen when returning from camera-label.
   useEffect(() => {
-    if (!barcode) return; // manual entry — user fills in themselves
+    if (!barcode) return; // manual entry or voice entry — user fills in themselves
+    if (isVoiceEntry) return; // came from voice count — name already pre-filled
 
     productsApi.getByBarcode(barcode)
       .then(r => {
@@ -172,7 +180,7 @@ export default function ScanResultScreen() {
   // ── UI ───────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gy }}>
-      <ScreenHeader title={existingProductId ? 'Update Product' : 'New Product'} subtitle={barcode || 'Manual Entry'} />
+      <ScreenHeader title={existingProductId ? 'Update Product' : 'New Product'} subtitle={barcode || (isVoiceEntry ? 'Voice Count' : 'Manual Entry')} />
       <ScrollView contentContainerStyle={{ padding: Spacing.s4 }}>
 
         {/* Status banner */}
@@ -184,12 +192,14 @@ export default function ScanResultScreen() {
         ]}>
           <View style={styles.ocrBannerLeft}>
             <Text style={styles.ocrBannerIcon}>
-              {existingProductId ? '📦' : ocrDone ? '✓' : ocrAttempted ? '⚠️' : '📷'}
+              {existingProductId ? '📦' : isVoiceEntry ? '🎙️' : ocrDone ? '✓' : ocrAttempted ? '⚠️' : '📷'}
             </Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.ocrBannerTitle}>
                 {existingProductId
                   ? 'Product found — update if needed'
+                  : isVoiceEntry
+                  ? 'New product from voice count'
                   : ocrDone
                   ? 'Label scanned — confirm fields'
                   : ocrAttempted
@@ -201,6 +211,8 @@ export default function ScanResultScreen() {
               <Text style={styles.ocrBannerSub}>
                 {existingProductId
                   ? `Barcode ${barcode} is in your inventory`
+                  : isVoiceEntry
+                  ? `${overrideQtyLabel} · Select a category to save`
                   : barcode
                   ? `Barcode: ${barcode}`
                   : 'No barcode — add manually'}
